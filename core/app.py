@@ -7,7 +7,7 @@ from core.logger import logger
 class NetworkToolboxApp(ctk.CTk):
     """Plugin-style main window. Reads MODULE_REGISTRY and auto-generates UI."""
 
-    VERSION = "v1.0.0"
+    VERSION = "v1.1.0"
 
     def __init__(self, module_registry):
         super().__init__()
