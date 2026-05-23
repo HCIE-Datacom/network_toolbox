@@ -77,7 +77,7 @@ class NetworkToolboxApp(ctk.CTk):
         log_btn.pack(fill="x", pady=(8, 0))
 
         # Copyright + version at bottom (pack order is reversed for side="bottom")
-        ctk.CTkLabel(sidebar_inner, text=f"© 2025 Tang Wenbo. All rights reserved.",
+        ctk.CTkLabel(sidebar_inner, text=f"© 2026 Tang Wenbo. All rights reserved.",
                       font=("Helvetica", 9), text_color="#b0b0b0").pack(side="bottom", anchor="w", pady=(2, 0))
         ctk.CTkLabel(sidebar_inner, text=f"NetTool {self.VERSION}",
                       font=("Helvetica", 11), text_color="#8e8e8e").pack(side="bottom", anchor="w", pady=(0, 0))
