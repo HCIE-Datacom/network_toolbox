@@ -199,7 +199,7 @@ class SubnetCalcModule(ToolModule):
         self._mode_var.set(mode)
         self._update_mode_buttons()
         if mode == "subnet":
-            self._subnet_frame.pack(fill="x", before=self._summary_frame)
+            self._subnet_frame.pack(fill="x")
             self._summary_frame.pack_forget()
             self._subnet_result.pack(fill="both", expand=True)
             self._summary_result.pack_forget()
@@ -262,11 +262,17 @@ class SubnetCalcModule(ToolModule):
         self._set_result("mask_bin", mask_bin + f"  (/{prefix})")
 
         if network.num_addresses > 2:
-            first = list(network.hosts())[0]
-            last = list(network.hosts())[-1]
+            first = ipaddress.IPv4Address(int(network.network_address) + 1)
+            last = ipaddress.IPv4Address(int(network.broadcast_address) - 1)
             self._set_result("first_host", str(first))
             self._set_result("last_host", str(last))
-            self._set_result("hosts", f"{network.num_addresses - 2} 个")
+            host_count = network.num_addresses - 2
+            if host_count > 1000000:
+                self._set_result("hosts", f"{host_count:,} 个（{host_count / 1000000:.1f}M）")
+            elif host_count > 1000:
+                self._set_result("hosts", f"{host_count:,} 个（{host_count / 1000:.1f}K）")
+            else:
+                self._set_result("hosts", f"{host_count:,} 个")
         else:
             self._set_result("first_host", "-")
             self._set_result("last_host", "-")
