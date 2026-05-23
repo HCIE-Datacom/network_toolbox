@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# App bundle (binary artifacts)
+*.app/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
