@@ -20,6 +20,10 @@ python3 network_toolbox.py
 
 或双击 `NetTool.app`。
 
+## 协议
+
+GNU General Public License v3.0 — 使用、修改、分发均须保持开源。
+
 ## 作者
 
 Tang Wenbo (HCIE-Datacom) — © 2026
