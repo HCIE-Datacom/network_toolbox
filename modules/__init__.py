@@ -23,6 +23,7 @@ from .ftp_tool import FTPToolModule
 from .ping_test import PingTestModule
 from .subnet_calc import SubnetCalcModule
 from .cmd_generator import CmdGeneratorModule
+from .iperf_tool import IperfToolModule
 
 # Registration order = sidebar display order.
 # To add a new feature: import its class and append to this list.
@@ -33,4 +34,5 @@ MODULE_REGISTRY = [
     PingTestModule,
     SubnetCalcModule,
     CmdGeneratorModule,
+    IperfToolModule,
 ]
