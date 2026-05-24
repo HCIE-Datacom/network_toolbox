@@ -358,7 +358,7 @@ class PingTestModule(ToolModule):
                                       fg_color="#1e1e1e", text_color="#e0e0e0",
                                       border_width=1, border_color="#e5e5e5",
                                       height=250, activate_scrollbars=True,
-                                      spacing3=4)
+                                      spacing3=8)
         self._output.pack(fill="both", expand=True)
 
         self._running = False

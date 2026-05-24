@@ -14,8 +14,8 @@ class NetworkToolboxApp(ctk.CTk):
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
         self.title("NetTool")
-        self.geometry("1050x780")
-        self.minsize(900, 640)
+        self.geometry("1050x880")
+        self.minsize(900, 700)
         self.configure(fg_color="#f9f9f9")
 
         self.grid_rowconfigure(0, weight=1)

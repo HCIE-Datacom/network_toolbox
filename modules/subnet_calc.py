@@ -186,7 +186,7 @@ class SubnetCalcModule(ToolModule):
                      fg="#555555", bg=bg, width=14, anchor="w",
                      highlightthickness=0, bd=0).grid(row=0, column=0, sticky="w", padx=(0, 10))
 
-            val_label = tk.Label(row_frame, text="-", font=("Courier", 11),
+            val_label = tk.Label(row_frame, text="-", font=("Helvetica", -12),
                                  fg="#1f1f1f", bg=bg, anchor="w",
                                  highlightthickness=0, bd=0)
             val_label.grid(row=0, column=1, sticky="w")
