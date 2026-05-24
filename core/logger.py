@@ -76,7 +76,7 @@ class AppLogger:
         return cls._instance
 
     def _init(self):
-        self._log_dir = os.path.expanduser("~/Library/Logs/NetTool")
+        self._log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
         os.makedirs(self._log_dir, exist_ok=True)
         self._log_path = os.path.join(self._log_dir, "app.log")
 

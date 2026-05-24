@@ -22,6 +22,7 @@ from .ntp_tool import NTPToolModule
 from .ftp_tool import FTPToolModule
 from .ping_test import PingTestModule
 from .subnet_calc import SubnetCalcModule
+from .cmd_generator import CmdGeneratorModule
 
 # Registration order = sidebar display order.
 # To add a new feature: import its class and append to this list.
@@ -31,4 +32,5 @@ MODULE_REGISTRY = [
     FTPToolModule,
     PingTestModule,
     SubnetCalcModule,
+    CmdGeneratorModule,
 ]

@@ -13,7 +13,11 @@ __pycache__/
 .idea/
 
 # Logs
+logs/
 *.log
+
+# User data
+templates/templates_user.json
 
 # App bundle (binary artifacts)
 *.app/
