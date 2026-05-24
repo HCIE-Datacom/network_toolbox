@@ -19,13 +19,151 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """NetworkToolboxApp - main window framework (sidebar + content area)."""
 
 import customtkinter as ctk
+import tkinter as tk
 from core.logger import logger
+
+
+# ── Global patch: add right-click context menu to CTkEntry ──
+
+_original_entry_init = ctk.CTkEntry.__init__
+
+
+def _patched_entry_init(self, *args, **kwargs):
+    _original_entry_init(self, *args, **kwargs)
+    _bind_entry_context_menu(self)
+
+
+def _bind_entry_context_menu(entry):
+    """Bind right-click context menu (Copy/Paste/Cut/Select All) to a CTkEntry."""
+    menu = tk.Menu(entry, tearoff=0)
+
+    def _popup(event):
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _copy():
+        try:
+            entry.clipboard_clear()
+            sel = entry.selection_get()
+            entry.clipboard_append(sel)
+        except tk.TclError:
+            pass
+
+    def _cut():
+        _copy()
+        try:
+            entry.delete("sel.first", "sel.last")
+        except tk.TclError:
+            pass
+
+    def _paste():
+        try:
+            entry.insert("insert", entry.clipboard_get())
+        except tk.TclError:
+            pass
+
+    def _select_all():
+        entry.select_range(0, "end")
+        entry.icursor("end")
+
+    def _post(x, y):
+        has_sel = False
+        try:
+            entry.selection_get()
+            has_sel = True
+        except tk.TclError:
+            pass
+        menu.delete(0, "end")
+        menu.add_command(label="剪切", command=_cut, state="normal" if has_sel else "disabled")
+        menu.add_command(label="复制", command=_copy, state="normal" if has_sel else "disabled")
+        menu.add_command(label="粘贴", command=_paste)
+        menu.add_separator()
+        menu.add_command(label="全选", command=_select_all)
+        menu.tk_popup(x, y)
+
+    entry.bind("<Button-2>", lambda e: _post(e.x_root, e.y_root))
+    entry.bind("<Button-3>", lambda e: _post(e.x_root, e.y_root))
+    entry.bind("<Command-a>", lambda e: _select_all())
+    entry.bind("<Control-a>", lambda e: _select_all())
+
+
+ctk.CTkEntry.__init__ = _patched_entry_init
+
+
+# ── Global patch: add right-click context menu to CTkTextbox ──
+
+_original_textbox_init = ctk.CTkTextbox.__init__
+
+
+def _patched_textbox_init(self, *args, **kwargs):
+    _original_textbox_init(self, *args, **kwargs)
+    _bind_textbox_context_menu(self)
+
+
+def _bind_textbox_context_menu(textbox):
+    """Bind right-click context menu (Copy/Paste/Select All) to a CTkTextbox."""
+    menu = tk.Menu(textbox, tearoff=0)
+
+    def _copy():
+        try:
+            textbox.clipboard_clear()
+            sel = textbox.get("sel.first", "sel.last")
+            textbox.clipboard_append(sel)
+        except tk.TclError:
+            pass
+
+    def _cut():
+        _copy()
+        try:
+            textbox.delete("sel.first", "sel.last")
+        except tk.TclError:
+            pass
+
+    def _paste():
+        try:
+            textbox.insert("insert", textbox.clipboard_get())
+        except tk.TclError:
+            pass
+
+    def _select_all():
+        textbox.tag_add("sel", "1.0", "end")
+        textbox.mark_set("insert", "end")
+
+    def _post(x, y):
+        has_sel = False
+        try:
+            textbox.get("sel.first", "sel.last")
+            has_sel = True
+        except tk.TclError:
+            pass
+        state = textbox.cget("state")
+        editable = (state == "normal")
+        menu.delete(0, "end")
+        menu.add_command(label="剪切", command=_cut,
+                         state="normal" if (has_sel and editable) else "disabled")
+        menu.add_command(label="复制", command=_copy,
+                         state="normal" if has_sel else "disabled")
+        menu.add_command(label="粘贴", command=_paste,
+                         state="normal" if editable else "disabled")
+        menu.add_separator()
+        menu.add_command(label="全选", command=_select_all)
+        menu.tk_popup(x, y)
+
+    textbox.bind("<Button-2>", lambda e: _post(e.x_root, e.y_root))
+    textbox.bind("<Button-3>", lambda e: _post(e.x_root, e.y_root))
+    textbox.bind("<Command-a>", lambda e: _select_all())
+    textbox.bind("<Control-a>", lambda e: _select_all())
+
+
+ctk.CTkTextbox.__init__ = _patched_textbox_init
 
 
 class NetworkToolboxApp(ctk.CTk):
     """Plugin-style main window. Reads MODULE_REGISTRY and auto-generates UI."""
 
-    VERSION = "v1.3.0"
+    VERSION = "v1.4.0"
 
     def __init__(self, module_registry):
         super().__init__()
