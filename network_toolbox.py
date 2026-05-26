@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 NetTool - Network Toolbox
 Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
@@ -16,8 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-#!/usr/bin/env python3
-"""Network Toolbox - entry point."""
+
+"""Network Toolbox - entry point (PySide6 edition)."""
 
 import os
 import sys
@@ -25,13 +26,26 @@ import sys
 # Ensure the project root is in sys.path so 'core' and 'modules' are importable.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+
 from core.app import NetworkToolboxApp
 from modules import MODULE_REGISTRY
 
 
 def main():
-    app = NetworkToolboxApp(MODULE_REGISTRY)
-    app.mainloop()
+    # Enable high-DPI scaling
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+    app = QApplication(sys.argv)
+    app.setApplicationName("NetTool")
+    app.setOrganizationName("NetTool")
+
+    window = NetworkToolboxApp(MODULE_REGISTRY)
+    window.show()
+
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

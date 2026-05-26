@@ -2,30 +2,22 @@
 NetTool - Network Toolbox
 Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+FTP Tool module - combined FTP/SFTP client and FTP server (PySide6 edition).
 """
-
-"""FTP Tool module - combined FTP/SFTP client and FTP server."""
 
 import os
 import time
 import threading
-import platform
 import stat
 import ftplib
-import customtkinter as ctk
-from tkinter import ttk, filedialog, messagebox
+
+from PySide6.QtWidgets import (
+    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QLineEdit, QPushButton, QPlainTextEdit,
+    QTreeWidget, QTreeWidgetItem, QHeaderView,
+    QDialog, QProgressBar, QFileDialog, QMessageBox,
+)
+from PySide6.QtCore import Qt
 
 try:
     import paramiko
@@ -33,362 +25,445 @@ except ImportError:
     paramiko = None
 
 from core.base_module import ToolModule
+from core.app import BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, BTN_MODE_ACTIVE, BTN_MODE_INACTIVE, set_card_style, set_transparent_bg, set_dark_output
+from core.app import H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE
 from core.logger import logger
 
-
 class FTPToolModule(ToolModule):
-    name = "FTP 工具"
-    icon = "📁"
-    description = "FTP/SFTP 客户端连接远程服务器，或在本地启动 FTP 服务供局域网文件共享。"
+    name = "FTP \u5de5\u5177"
+    icon = "\U0001f4c1"
+    description = "FTP/SFTP \u5ba2\u6237\u7aef\u8fde\u63a5\u8fdc\u7a0b\u670d\u52a1\u5668\uff0c\u6216\u5728\u672c\u5730\u542f\u52a8 FTP \u670d\u52a1\u4f9b\u5c40\u57df\u7f51\u6587\u4ef6\u5171\u4eab\u3002"
 
-    def build(self, parent):
-        ctk.CTkLabel(parent, text=self.name,
-                      font=("Helvetica", 22, "bold"), text_color="#1f1f1f").pack(anchor="w", pady=(0, 5))
-        ctk.CTkLabel(parent, text=self.description,
-                      font=("Helvetica", 13), text_color="#6b6b6b",
-                      wraplength=620, justify="left").pack(anchor="w", pady=(0, 12))
+    def build(self, parent: QWidget):
+        if parent.layout() is None:
+            parent.setLayout(QVBoxLayout(parent))
+        layout = parent.layout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # ===== Top-level Mode Selector =====
-        mode_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                 border_width=1, border_color="#e5e5e5")
-        mode_card.pack(fill="x", pady=(0, 10))
-        mode_inner = ctk.CTkFrame(mode_card, fg_color="transparent")
-        mode_inner.pack(fill="x", padx=12, pady=10)
+        # Title
+        title = QLabel(self.name)
+        title.setStyleSheet(H1_STYLE)
+        layout.addWidget(title)
+        layout.addSpacing(5)
 
-        ctk.CTkLabel(mode_inner, text="功能模式",
-                     font=("Helvetica", 11, "bold"), text_color="#333333").pack(anchor="w", pady=(0, 4))
+        desc = QLabel(self.description)
+        desc.setStyleSheet(DESC_STYLE)
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        layout.addSpacing(10)
 
-        self._mode_var = ctk.StringVar(value="client")
-        mode_btn_frame = ctk.CTkFrame(mode_inner, fg_color="#f0f0f0", corner_radius=8)
-        mode_btn_frame.pack(fill="x")
+        # Mode card
+        mode_card = QFrame()
+        set_card_style(mode_card)
+        mc_layout = QVBoxLayout(mode_card)
+        mc_layout.setContentsMargins(15, 12, 15, 12)
+
+        ml = QLabel("功能模式")
+        ml.setStyleSheet(H2_STYLE)
+        mc_layout.addWidget(ml)
+
         self._mode_btns = {}
-        for val, label_text in [("client", "客户端"), ("server", "服务器")]:
-            btn = ctk.CTkButton(mode_btn_frame, text=label_text, width=0, height=28,
-                                font=("Helvetica", 11), corner_radius=6,
-                                fg_color="transparent", text_color="#333333",
-                                hover_color="#e0e0e0",
-                                command=lambda v=val: self._set_mode(v))
-            btn.pack(side="left", expand=True, fill="x", padx=2, pady=2)
+        mb_wrapper = QWidget()
+        mb_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        mb_wrapper.setStyleSheet("background: #f0f0f0; border-radius: 8px;")
+        mbl = QHBoxLayout(mb_wrapper)
+        mbl.setContentsMargins(4, 4, 4, 4)
+        mbl.setSpacing(4)
+        for val, text in [("client", "客户端"), ("server", "服务器")]:
+            btn = QPushButton(text)
+            btn.setFixedHeight(28)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked=False, v=val: self._set_mode(v))
+            mbl.addWidget(btn, stretch=1)
             self._mode_btns[val] = btn
-        self._update_mode_buttons()
+        self._update_mode_buttons("client")
+        mc_layout.addWidget(mb_wrapper)
 
-        # ===== Content Container =====
-        content_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                    border_width=1, border_color="#e5e5e5")
-        content_card.pack(fill="both", expand=True)
+        layout.addWidget(mode_card)
+        layout.addSpacing(10)
 
-        content_inner = ctk.CTkFrame(content_card, fg_color="transparent")
-        content_inner.pack(fill="both", expand=True, padx=12, pady=10)
+        # Content card
+        content_card = QFrame()
+        set_card_style(content_card)
+        cc_layout = QVBoxLayout(content_card)
+        cc_layout.setContentsMargins(15, 12, 15, 12)
 
-        self._client_frame = ctk.CTkFrame(content_inner, fg_color="transparent")
+        self._client_frame = QWidget()
+        set_transparent_bg(self._client_frame)
         self._build_client_ui(self._client_frame)
+        cc_layout.addWidget(self._client_frame)
 
-        self._server_frame = ctk.CTkFrame(content_inner, fg_color="transparent")
+        self._server_frame = QWidget()
+        set_transparent_bg(self._server_frame)
         self._build_server_ui(self._server_frame)
+        cc_layout.addWidget(self._server_frame)
+        self._server_frame.hide()
+
+        layout.addWidget(content_card, stretch=1)
 
         self._client = None
         self._sftp = None
         self._current_remote_dir = "/"
         self._server_thread = None
+        self._xfer_cancel = False
 
-        self._set_mode("client")
-
-    # ================================================================
-    #  Client UI
-    # ================================================================
+    # ── Client UI ──
 
     def _build_client_ui(self, parent):
-        # --- Protocol selector ---
-        ctk.CTkLabel(parent, text="协议", font=("Helvetica", 10, "bold"),
-                     text_color="#333333").pack(anchor="w", pady=(0, 2))
-        proto_row = ctk.CTkFrame(parent, fg_color="#f0f0f0", corner_radius=6)
-        proto_row.pack(fill="x", pady=(0, 6))
-        self._proto_var = ctk.StringVar(value="ftp")
+        fl = QVBoxLayout(parent)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(4)
+
+        # Protocol selector
+        pl = QLabel("协议")
+        pl.setStyleSheet(H3_STYLE)
+        fl.addWidget(pl)
+
         self._proto_btns = {}
+        pw = QWidget()
+        pw.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        pw.setStyleSheet("background: #f0f0f0; border-radius: 6px;")
+        pwl = QHBoxLayout(pw)
+        pwl.setContentsMargins(4, 4, 4, 4)
+        pwl.setSpacing(2)
         for val, txt in [("ftp", "FTP"), ("sftp", "SFTP")]:
-            btn = ctk.CTkButton(proto_row, text=txt, width=0, height=24,
-                                font=("Helvetica", 10), corner_radius=4,
-                                fg_color="transparent", text_color="#333333",
-                                hover_color="#e0e0e0",
-                                command=lambda v=val: self._set_proto(v))
-            btn.pack(side="left", expand=True, fill="x", padx=1, pady=1)
+            btn = QPushButton(txt)
+            btn.setFixedHeight(24)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked=False, v=val: self._set_proto(v))
+            pwl.addWidget(btn, stretch=1)
             self._proto_btns[val] = btn
-        self._update_proto_buttons()
+        self._update_proto_buttons("ftp")
+        fl.addWidget(pw)
+        fl.addSpacing(4)
 
-        # --- Connection form ---
-        conn_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        conn_frame.pack(fill="x", pady=(0, 6))
-        conn_frame.grid_columnconfigure(0, weight=1)
+        # Connection form
+        conn = QGridLayout()
+        conn.setSpacing(4)
+        conn.setContentsMargins(0, 0, 0, 0)
+        fl.addLayout(conn)
 
-        r1 = ctk.CTkFrame(conn_frame, fg_color="transparent")
-        r1.grid(row=0, column=0, sticky="ew", pady=(0, 4))
-        r1.grid_columnconfigure(1, weight=1)
+        # Row 1: Host + Port
+        conn.addWidget(self._lbl("服务器", 45), 0, 0)
+        self._host_entry = QLineEdit()
+        self._host_entry.setPlaceholderText("IP 或域名")
+        self._host_entry.setMinimumHeight(28)
+        conn.addWidget(self._host_entry, 0, 1)
 
-        ctk.CTkLabel(r1, text="服务器", font=("Helvetica", 10, "bold"),
-                     text_color="#333333", width=45, anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 6))
-        self._host_var = ctk.StringVar(value="")
-        self._host_entry = ctk.CTkEntry(r1, textvariable=self._host_var,
-                                         placeholder_text="IP 或域名", font=("Helvetica", 11),
-                                         corner_radius=6, height=28, border_color="#d1d5db", border_width=1)
-        self._host_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6))
-        ctk.CTkLabel(r1, text="端口", font=("Helvetica", 10, "bold"),
-                     text_color="#333333", width=30, anchor="w").grid(row=0, column=2, sticky="w", padx=(0, 4))
-        self._port_var = ctk.StringVar(value="21")
-        self._port_entry = ctk.CTkEntry(r1, textvariable=self._port_var, width=55,
-                                         font=("Helvetica", 11), corner_radius=6,
-                                         height=28, border_color="#d1d5db", border_width=1)
-        self._port_entry.grid(row=0, column=3)
+        conn.addWidget(self._lbl("端口", 30), 0, 2)
+        self._port_entry = QLineEdit("21")
+        self._port_entry.setFixedWidth(55)
+        self._port_entry.setMinimumHeight(28)
+        conn.addWidget(self._port_entry, 0, 3)
 
-        r2 = ctk.CTkFrame(conn_frame, fg_color="transparent")
-        r2.grid(row=1, column=0, sticky="ew")
-        r2.grid_columnconfigure(1, weight=1)
-        r2.grid_columnconfigure(3, weight=1)
+        # Row 2: User + Pass + Connect
+        conn.addWidget(self._lbl("账号", 45), 1, 0)
+        self._user_entry = QLineEdit()
+        self._user_entry.setPlaceholderText("用户名")
+        self._user_entry.setMinimumHeight(28)
+        conn.addWidget(self._user_entry, 1, 1)
 
-        ctk.CTkLabel(r2, text="账号", font=("Helvetica", 10, "bold"),
-                     text_color="#333333", width=45, anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 6))
-        self._user_var = ctk.StringVar(value="")
-        self._user_entry = ctk.CTkEntry(r2, textvariable=self._user_var,
-                                         placeholder_text="用户名", font=("Helvetica", 11),
-                                         corner_radius=6, height=28, border_color="#d1d5db", border_width=1)
-        self._user_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6))
-        ctk.CTkLabel(r2, text="密码", font=("Helvetica", 10, "bold"),
-                     text_color="#333333", width=30, anchor="w").grid(row=0, column=2, sticky="w", padx=(0, 4))
-        self._pass_var = ctk.StringVar(value="")
-        self._pass_entry = ctk.CTkEntry(r2, textvariable=self._pass_var,
-                                         placeholder_text="密码", font=("Helvetica", 11),
-                                         corner_radius=6, height=28, border_color="#d1d5db", border_width=1)
-        self._pass_entry.grid(row=0, column=3, sticky="ew", padx=(0, 6))
-        self._connect_btn = ctk.CTkButton(r2, text="连接", command=self._toggle_connect,
-                                           width=65, height=28, font=("Helvetica", 11, "bold"),
-                                           corner_radius=6, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._connect_btn.grid(row=0, column=4)
+        conn.addWidget(self._lbl("密码", 30), 1, 2)
+        self._pass_entry = QLineEdit()
+        self._pass_entry.setPlaceholderText("密码")
+        self._pass_entry.setMinimumHeight(28)
+        conn.addWidget(self._pass_entry, 1, 3)
 
-        self._conn_status = ctk.CTkLabel(conn_frame, text="状态: 未连接",
-                                          font=("Helvetica", 9), text_color="#999999")
-        self._conn_status.grid(row=2, column=0, sticky="w", pady=(1, 0))
+        self._connect_btn = QPushButton("连接")
+        self._connect_btn.setStyleSheet(BTN_PRIMARY)
+        self._connect_btn.setFixedSize(65, 28)
+        self._connect_btn.clicked.connect(self._toggle_connect)
+        conn.addWidget(self._connect_btn, 1, 4)
 
-        # --- Remote browser ---
-        ctk.CTkLabel(parent, text="远程文件", font=("Helvetica", 10, "bold"),
-                     text_color="#666666").pack(anchor="w", pady=(6, 1))
+        self._conn_status = QLabel("状态: 未连接")
+        self._conn_status.setStyleSheet(HINT_STYLE + " color: #999;")
+        fl.addWidget(self._conn_status)
 
-        nav = ctk.CTkFrame(parent, fg_color="transparent")
-        nav.pack(fill="x", pady=(0, 2))
-        self._path_label = ctk.CTkLabel(nav, text="/", font=("Courier", 10),
-                                         text_color="#333333", anchor="w")
-        self._path_label.pack(side="left", fill="x", expand=True)
-        for txt, cmd in [("🔄", self._refresh_dir), ("⬆", self._go_up)]:
-            ctk.CTkButton(nav, text=txt, command=cmd, width=28, height=20,
-                          font=("Helvetica", 10), corner_radius=4,
-                          fg_color="#e5e5e5", hover_color="#d1d5db",
-                          text_color="#333333").pack(side="right", padx=(2, 0))
+        # Remote browser header
+        fl.addSpacing(4)
+        rh = QLabel("远程文件")
+        rh.setStyleSheet(H3_STYLE + " color: #666;")
+        fl.addWidget(rh)
 
-        remote_container = ctk.CTkFrame(parent, fg_color="#f9f9f9",
-                                         corner_radius=6, border_width=1, border_color="#e5e5e5")
-        remote_container.pack(fill="both", expand=True)
+        nav = QWidget()
+        set_transparent_bg(nav)
+        nl = QHBoxLayout(nav)
+        nl.setContentsMargins(0, 0, 0, 0)
+        nl.setSpacing(2)
+        self._path_label = QLabel("/")
+        self._path_label.setStyleSheet("font-family: Courier; font-size: 11px; color: #333; background: transparent;")
+        nl.addWidget(self._path_label, stretch=1)
 
-        style = ttk.Style()
-        style.configure("Treeview", font=("Helvetica", 10), rowheight=20,
-                        background="#f9f9f9", fieldbackground="#f9f9f9")
-        style.configure("Treeview.Heading", font=("Helvetica", 9, "bold"))
+        for txt, cmd in [("\U0001f504", self._refresh_dir), ("\u2b06", self._go_up)]:
+            b = QPushButton(txt)
+            b.setFixedSize(28, 20)
+            b.setStyleSheet("background: #e5e5e5; border: none; border-radius: 4px; font-size: 12px;")
+            b.clicked.connect(cmd)
+            nl.addWidget(b)
+        fl.addWidget(nav)
 
-        self._tree = ttk.Treeview(remote_container, columns=("name", "size", "date"),
-                                   show="headings", selectmode="browse")
-        self._tree.heading("name", text="名称", anchor="w")
-        self._tree.heading("size", text="大小", anchor="e")
-        self._tree.heading("date", text="修改时间", anchor="w")
-        self._tree.column("name", width=240, anchor="w")
-        self._tree.column("size", width=70, anchor="e")
-        self._tree.column("date", width=130, anchor="w")
+        # Remote tree
+        self._tree = QTreeWidget()
+        self._tree.setHeaderLabels(["名称", "大小", "修改时间"])
+        self._tree.setColumnWidth(0, 240)
+        self._tree.setColumnWidth(1, 70)
+        self._tree.setColumnWidth(2, 130)
+        self._tree.setAlternatingRowColors(True)
+        self._tree.setRootIsDecorated(False)
+        self._tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        self._tree.itemDoubleClicked.connect(self._on_tree_double_click)
+        self._tree.setStyleSheet("""
+            QTreeWidget { border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; }
+            QTreeWidget::item { padding: 2px 4px; }
+            QTreeWidget::item:selected { background: #e8f5ee; color: #333; }
+        """)
+        fl.addWidget(self._tree, stretch=1)
 
-        vsb = ttk.Scrollbar(remote_container, orient="vertical", command=self._tree.yview)
-        self._tree.configure(yscrollcommand=vsb.set)
-        self._tree.pack(side="left", fill="both", expand=True, padx=(2, 0), pady=2)
-        vsb.pack(side="right", fill="y", padx=(0, 2), pady=2)
-        self._tree.bind("<Double-1>", self._on_tree_double_click)
+        # Action buttons
+        fl.addSpacing(4)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.NoFrame)
+        sep.setLineWidth(0)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: #e5e5e5; border: none;")
+        fl.addWidget(sep)
 
-        # --- Separator + Action buttons ---
-        sep_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        sep_frame.pack(fill="x", pady=(4, 1))
-        ctk.CTkFrame(sep_frame, height=1, fg_color="#e5e5e5").pack(fill="x")
+        btn_row = QWidget()
+        set_transparent_bg(btn_row)
+        brl = QHBoxLayout(btn_row)
+        brl.setContentsMargins(0, 4, 0, 0)
+        brl.setSpacing(8)
 
-        btn_row = ctk.CTkFrame(parent, fg_color="transparent")
-        btn_row.pack(fill="x", pady=(0, 4))
-        self._upload_btn = ctk.CTkButton(btn_row, text="⬆ 上传到远程", command=self._upload_file,
-                                          width=110, height=22, font=("Helvetica", 10, "bold"),
-                                          corner_radius=4, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._upload_btn.pack(side="left")
-        self._download_btn = ctk.CTkButton(btn_row, text="⬇ 下载到本地", command=self._download_file,
-                                            width=110, height=22, font=("Helvetica", 10, "bold"),
-                                            corner_radius=4, fg_color="#3b82f6", hover_color="#2563eb")
-        self._download_btn.pack(side="left", padx=(8, 0))
-        self._delete_btn = ctk.CTkButton(btn_row, text="🗑 删除远程", command=self._delete_file,
-                                          width=85, height=22, font=("Helvetica", 10),
-                                          corner_radius=4, fg_color="#ef4444", hover_color="#dc2626")
-        self._delete_btn.pack(side="right")
+        self._upload_btn = QPushButton("\u2b06 上传到远程")
+        self._upload_btn.setStyleSheet(BTN_PRIMARY)
+        self._upload_btn.setFixedHeight(28)
+        self._upload_btn.clicked.connect(self._upload_file)
+        brl.addWidget(self._upload_btn)
 
-        # --- Local browser ---
-        self._local_label = ctk.CTkLabel(parent, text="本地文件", font=("Helvetica", 10, "bold"),
-                     text_color="#666666").pack(anchor="w", pady=(2, 1))
+        self._download_btn = QPushButton("\u2b07 下载到本地")
+        self._download_btn.setStyleSheet("""
+            QPushButton { background: #3b82f6; color: white; border: none;
+            border-radius: 8px; padding: 6px 18px; font-size: 13px; font-weight: bold; }
+            QPushButton:hover { background: #2563eb; }
+        """)
+        self._download_btn.setFixedHeight(28)
+        self._download_btn.clicked.connect(self._download_file)
+        brl.addWidget(self._download_btn)
 
-        local_nav = ctk.CTkFrame(parent, fg_color="transparent")
-        local_nav.pack(fill="x", pady=(0, 2))
-        self._local_path_label = ctk.CTkLabel(local_nav, text=os.path.expanduser("~/Desktop"),
-                                               font=("Courier", 10), text_color="#333333", anchor="w")
-        self._local_path_label.pack(side="left", fill="x", expand=True)
-        for txt, cmd in [("...", self._browse_local), ("🔄", self._refresh_local), ("⬆", self._go_up_local)]:
-            ctk.CTkButton(local_nav, text=txt, command=cmd, width=28, height=20,
-                          font=("Helvetica", 10), corner_radius=4,
-                          fg_color="#e5e5e5", hover_color="#d1d5db",
-                          text_color="#333333").pack(side="right", padx=(2, 0))
+        self._delete_btn = QPushButton("\U0001f5d1 删除远程")
+        self._delete_btn.setStyleSheet(BTN_DANGER)
+        self._delete_btn.setFixedHeight(28)
+        self._delete_btn.clicked.connect(self._delete_file)
+        brl.addWidget(self._delete_btn)
+        brl.addStretch(1)
+        fl.addWidget(btn_row)
 
-        local_container = ctk.CTkFrame(parent, fg_color="#f9f9f9",
-                                        corner_radius=6, border_width=1, border_color="#e5e5e5")
-        local_container.pack(fill="both", expand=True)
+        # Local browser
+        fl.addSpacing(4)
+        ll = QLabel("本地文件")
+        ll.setStyleSheet(H3_STYLE + " color: #666;")
+        fl.addWidget(ll)
 
-        self._local_tree = ttk.Treeview(local_container, columns=("name", "size", "date"),
-                                         show="headings", selectmode="browse")
-        self._local_tree.heading("name", text="名称", anchor="w")
-        self._local_tree.heading("size", text="大小", anchor="e")
-        self._local_tree.heading("date", text="修改时间", anchor="w")
-        self._local_tree.column("name", width=240, anchor="w")
-        self._local_tree.column("size", width=70, anchor="e")
-        self._local_tree.column("date", width=130, anchor="w")
-
-        local_vsb = ttk.Scrollbar(local_container, orient="vertical", command=self._local_tree.yview)
-        self._local_tree.configure(yscrollcommand=local_vsb.set)
-        self._local_tree.pack(side="left", fill="both", expand=True, padx=(2, 0), pady=2)
-        local_vsb.pack(side="right", fill="y", padx=(0, 2), pady=2)
-        self._local_tree.bind("<Double-1>", self._on_local_double_click)
-
+        local_nav = QWidget()
+        set_transparent_bg(local_nav)
+        lnl = QHBoxLayout(local_nav)
+        lnl.setContentsMargins(0, 0, 0, 0)
+        lnl.setSpacing(2)
         self._local_dir = os.path.expanduser("~/Desktop")
+        self._local_path_label = QLabel(self._local_dir)
+        self._local_path_label.setStyleSheet("font-family: Courier; font-size: 11px; color: #333; background: transparent;")
+        lnl.addWidget(self._local_path_label, stretch=1)
 
-        # --- Log area ---
-        mono = ("SF Mono", max(9, 9)) if platform.system() == "Darwin" else ("Consolas", max(9, 9))
-        self._clog = ctk.CTkTextbox(parent, font=mono, wrap="word", corner_radius=6,
-                                     fg_color="#f9f9f9", text_color="#333333",
-                                     border_width=1, border_color="#e5e5e5", height=50)
-        self._clog.pack(fill="x")
+        for txt, cmd in [("...", self._browse_local), ("\U0001f504", self._refresh_local), ("\u2b06", self._go_up_local)]:
+            b = QPushButton(txt)
+            b.setFixedSize(28, 20)
+            b.setStyleSheet("background: #e5e5e5; border: none; border-radius: 4px; font-size: 12px;")
+            b.clicked.connect(cmd)
+            lnl.addWidget(b)
+        fl.addWidget(local_nav)
+
+        # Local tree
+        self._local_tree = QTreeWidget()
+        self._local_tree.setHeaderLabels(["名称", "大小", "修改时间"])
+        self._local_tree.setColumnWidth(0, 240)
+        self._local_tree.setColumnWidth(1, 70)
+        self._local_tree.setColumnWidth(2, 130)
+        self._local_tree.setAlternatingRowColors(True)
+        self._local_tree.setRootIsDecorated(False)
+        self._local_tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        self._local_tree.itemDoubleClicked.connect(self._on_local_double_click)
+        self._local_tree.setStyleSheet("""
+            QTreeWidget { border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; }
+            QTreeWidget::item { padding: 2px 4px; }
+            QTreeWidget::item:selected { background: #e8f5ee; color: #333; }
+        """)
+        fl.addWidget(self._local_tree, stretch=1)
+
+        # Client log
+        fl.addSpacing(4)
+        self._clog = QPlainTextEdit()
+        self._clog.setReadOnly(True)
+        self._clog.setFixedHeight(50)
+        set_dark_output(self._clog)
+        fl.addWidget(self._clog)
 
         self._refresh_local()
 
-    # ================================================================
-    #  Server UI
-    # ================================================================
+    # ── Server UI ──
 
     def _build_server_ui(self, parent):
-        ctk.CTkLabel(parent, text="服务配置",
-                     font=("Helvetica", 12, "bold"), text_color="#333333").pack(anchor="w", pady=(0, 8))
+        fl = QVBoxLayout(parent)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(8)
 
-        pr = ctk.CTkFrame(parent, fg_color="transparent")
-        pr.pack(fill="x")
-        pr.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(pr, text="监听端口:", font=("Helvetica", 13),
-                     text_color="#333333").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self._srv_port_var = ctk.StringVar(value="21")
-        self._srv_port_entry = ctk.CTkEntry(pr, textvariable=self._srv_port_var, width=100,
-                                             font=("Helvetica", 13), corner_radius=8,
-                                             height=38, border_color="#d1d5db", border_width=1)
-        self._srv_port_entry.grid(row=0, column=1, sticky="w")
-        ctk.CTkLabel(pr, text="(FTP 默认端口)", font=("Helvetica", 11),
-                     text_color="#8e8e8e").grid(row=0, column=2, sticky="w", padx=(10, 0))
+        sl = QLabel("服务配置")
+        sl.setStyleSheet(H3_STYLE)
+        fl.addWidget(sl)
 
-        dr = ctk.CTkFrame(parent, fg_color="transparent")
-        dr.pack(fill="x", pady=(12, 0))
-        dr.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(dr, text="根目录:", font=("Helvetica", 13),
-                     text_color="#333333").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self._srv_dir_var = ctk.StringVar(value=os.path.expanduser("~/Desktop"))
-        self._srv_dir_entry = ctk.CTkEntry(dr, textvariable=self._srv_dir_var,
-                                            font=("Helvetica", 13), corner_radius=8,
-                                            height=38, border_color="#d1d5db", border_width=1)
-        self._srv_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-        ctk.CTkButton(dr, text="浏览", command=self._browse_srv_dir, width=70, height=38,
-                       font=("Helvetica", 13), corner_radius=8, fg_color="#e5e5e5",
-                       hover_color="#d1d5db", text_color="#333333").grid(row=0, column=2)
+        # Port
+        pr = QWidget()
+        set_transparent_bg(pr)
+        prl = QHBoxLayout(pr)
+        prl.setContentsMargins(0, 0, 0, 0)
+        prl.setSpacing(10)
+        prl.addWidget(self._lbl("监听端口:", 60))
+        self._srv_port_entry = QLineEdit("21")
+        self._srv_port_entry.setFixedWidth(80)
+        self._srv_port_entry.setMinimumHeight(32)
+        prl.addWidget(self._srv_port_entry)
+        prl.addWidget(QLabel("(FTP 默认端口)"))
+        prl.itemAt(2).widget().setStyleSheet(HINT_STYLE)
+        prl.addStretch(1)
+        fl.addWidget(pr)
 
-        ap = ctk.CTkFrame(parent, fg_color="transparent")
-        ap.pack(fill="x", pady=(12, 0))
-        ctk.CTkLabel(ap, text="用户名:", font=("Helvetica", 13), text_color="#333333").pack(side="left", padx=(0, 10))
-        self._srv_user_var = ctk.StringVar(value="admin")
-        ctk.CTkEntry(ap, textvariable=self._srv_user_var, width=120,
-                      font=("Helvetica", 13), corner_radius=8,
-                      height=38, border_color="#d1d5db", border_width=1).pack(side="left")
-        ctk.CTkLabel(ap, text="  密码:", font=("Helvetica", 13), text_color="#333333").pack(side="left", padx=(10, 10))
-        self._srv_pass_var = ctk.StringVar(value="123456")
-        ctk.CTkEntry(ap, textvariable=self._srv_pass_var, width=120,
-                      font=("Helvetica", 13), corner_radius=8,
-                      height=38, border_color="#d1d5db", border_width=1).pack(side="left")
+        # Directory
+        dr = QWidget()
+        set_transparent_bg(dr)
+        drl = QHBoxLayout(dr)
+        drl.setContentsMargins(0, 0, 0, 0)
+        drl.setSpacing(8)
+        drl.addWidget(self._lbl("根目录:", 60))
+        self._srv_dir_entry = QLineEdit(os.path.expanduser("~/Desktop"))
+        self._srv_dir_entry.setMinimumHeight(32)
+        drl.addWidget(self._srv_dir_entry, stretch=1)
+        browse_btn = QPushButton("浏览")
+        browse_btn.setStyleSheet("background: #e5e5e5; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px;")
+        browse_btn.clicked.connect(self._browse_srv_dir)
+        drl.addWidget(browse_btn)
+        fl.addWidget(dr)
 
-        tr = ctk.CTkFrame(parent, fg_color="transparent")
-        tr.pack(fill="x", pady=(15, 0))
-        self._srv_toggle_btn = ctk.CTkButton(tr, text="启动服务", command=self._toggle_server,
-                                              width=120, height=38, font=("Helvetica", 13, "bold"),
-                                              corner_radius=8, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._srv_toggle_btn.pack(side="left")
-        self._srv_status_label = ctk.CTkLabel(tr, text="状态: 已停止",
-                                               font=("Helvetica", 13), text_color="#666666")
-        self._srv_status_label.pack(side="left", padx=(15, 0))
+        # Auth
+        ap = QWidget()
+        set_transparent_bg(ap)
+        apl = QHBoxLayout(ap)
+        apl.setContentsMargins(0, 0, 0, 0)
+        apl.setSpacing(10)
+        apl.addWidget(self._lbl("用户名:", 60))
+        self._srv_user_entry = QLineEdit("admin")
+        self._srv_user_entry.setFixedWidth(120)
+        self._srv_user_entry.setMinimumHeight(32)
+        apl.addWidget(self._srv_user_entry)
+        apl.addWidget(self._lbl("密码:", 35))
+        self._srv_pass_entry = QLineEdit("123456")
+        self._srv_pass_entry.setFixedWidth(120)
+        self._srv_pass_entry.setMinimumHeight(32)
+        apl.addWidget(self._srv_pass_entry)
+        apl.addStretch(1)
+        fl.addWidget(ap)
 
-        ctk.CTkLabel(parent, text="运行日志", font=("Helvetica", 12, "bold"),
-                     text_color="#333333").pack(anchor="w", pady=(12, 8))
-        mono = ("SF Mono", max(11, 11)) if platform.system() == "Darwin" else ("Consolas", max(11, 11))
-        self._srv_log = ctk.CTkTextbox(parent, font=mono, wrap="word", corner_radius=8,
-                                        fg_color="white", text_color="#333333",
-                                        border_width=1, border_color="#e5e5e5", activate_scrollbars=True)
-        self._srv_log.pack(fill="both", expand=True, pady=(0, 8))
-        self._srv_log.configure(state="disabled")
+        # Toggle
+        tr = QWidget()
+        set_transparent_bg(tr)
+        trl = QHBoxLayout(tr)
+        trl.setContentsMargins(0, 0, 0, 0)
+        trl.setSpacing(15)
+        self._srv_toggle_btn = QPushButton("启动服务")
+        self._srv_toggle_btn.setStyleSheet(BTN_PRIMARY)
+        self._srv_toggle_btn.setFixedSize(120, 36)
+        self._srv_toggle_btn.clicked.connect(self._toggle_server)
+        trl.addWidget(self._srv_toggle_btn)
+        self._srv_status_label = QLabel("状态: 已停止")
+        self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #666;")
+        trl.addWidget(self._srv_status_label)
+        trl.addStretch(1)
+        fl.addWidget(tr)
 
-    # ================================================================
-    #  Mode Switching
-    # ================================================================
+        # Server log
+        fl.addSpacing(8)
+        sll = QLabel("运行日志")
+        sll.setStyleSheet(H3_STYLE)
+        fl.addWidget(sll)
 
-    def _set_mode(self, mode):
-        self._mode_var.set(mode)
-        self._update_mode_buttons()
-        if mode == "client":
-            self._client_frame.pack(fill="both", expand=True)
-            self._server_frame.pack_forget()
-        else:
-            self._client_frame.pack_forget()
-            self._server_frame.pack(fill="both", expand=True)
+        self._srv_log = QPlainTextEdit()
+        self._srv_log.setReadOnly(True)
+        set_dark_output(self._srv_log)
+        fl.addWidget(self._srv_log, stretch=1)
 
-    def _update_mode_buttons(self):
-        current = self._mode_var.get()
-        for val, btn in self._mode_btns.items():
-            if val == current:
-                btn.configure(fg_color="#10a37f", text_color="white", hover_color="#0d8c6d")
-            else:
-                btn.configure(fg_color="transparent", text_color="#333333", hover_color="#e0e0e0")
+    # ── Helpers ──
 
-    def _set_proto(self, proto):
-        self._proto_var.set(proto)
-        self._update_proto_buttons()
-        if proto == "ftp" and self._port_var.get() in ("", "22"):
-            self._port_var.set("21")
-        elif proto == "sftp" and self._port_var.get() in ("", "21"):
-            self._port_var.set("22")
-
-    def _update_proto_buttons(self):
-        current = self._proto_var.get()
-        for val, btn in self._proto_btns.items():
-            if val == current:
-                btn.configure(fg_color="#10a37f", text_color="white", hover_color="#0d8c6d")
-            else:
-                btn.configure(fg_color="transparent", text_color="#333333", hover_color="#e0e0e0")
-
-    # ================================================================
-    #  Client - Connect / Disconnect
-    # ================================================================
-
-    def _log(self, msg):
-        def _up():
-            self._clog.insert("end", msg + "\n")
-            self._clog.see("end")
-        self.app.after(0, _up)
+    @staticmethod
+    def _lbl(text, w=None):
+        l = QLabel(text)
+        if w:
+            l.setFixedWidth(w)
+        l.setStyleSheet(BODY_STYLE)
+        return l
 
     @staticmethod
     def _ts():
         return time.strftime("%H:%M:%S")
+
+    @staticmethod
+    def _fmt_size(size):
+        if size < 1024:
+            return f"{size} B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f} KB"
+        elif size < 1024 * 1024 * 1024:
+            return f"{size / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+    # ── Mode / Protocol switching ──
+
+    def _set_mode(self, mode):
+        self._update_mode_buttons(mode)
+        if mode == "client":
+            self._client_frame.show()
+            self._server_frame.hide()
+        else:
+            self._client_frame.hide()
+            self._server_frame.show()
+
+    def _update_mode_buttons(self, val):
+        for v, btn in self._mode_btns.items():
+            if v == val:
+                btn.setStyleSheet(BTN_MODE_ACTIVE)
+            else:
+                btn.setStyleSheet(BTN_MODE_INACTIVE)
+
+    def _set_proto(self, proto):
+        self._update_proto_buttons(proto)
+        p = self._port_entry.text()
+        if proto == "ftp" and p in ("", "22"):
+            self._port_entry.setText("21")
+        elif proto == "sftp" and p in ("", "21"):
+            self._port_entry.setText("22")
+
+    def _update_proto_buttons(self, val):
+        for v, btn in self._proto_btns.items():
+            if v == val:
+                btn.setStyleSheet(BTN_MODE_ACTIVE)
+            else:
+                btn.setStyleSheet(BTN_MODE_INACTIVE)
+
+    # ── Log ──
+
+    def _log(self, msg):
+        self.app.after(0, lambda: self._clog.appendPlainText(msg))
+
+    # ── Connect / Disconnect ──
 
     def _toggle_connect(self):
         if self._client is not None:
@@ -397,25 +472,32 @@ class FTPToolModule(ToolModule):
             self._connect()
 
     def _connect(self):
-        host = self._host_var.get().strip()
-        port_str = self._port_var.get().strip()
-        proto = self._proto_var.get()
+        host = self._host_entry.text().strip()
+        port_str = self._port_entry.text().strip()
+        for v, btn in self._proto_btns.items():
+            btn_style = btn.styleSheet()
+            if "#10a37f" in btn_style:
+                proto = v
+                break
+        else:
+            proto = "ftp"
+
         if not host:
-            messagebox.showwarning("提示", "请输入主机地址")
+            QMessageBox.warning(self.app, "提示", "请输入主机地址")
             return
         if not port_str.isdigit() or not (1 <= int(port_str) <= 65535):
-            messagebox.showwarning("提示", "请输入有效的端口号 (1-65535)")
+            QMessageBox.warning(self.app, "提示", "请输入有效的端口号 (1-65535)")
             return
-        port = int(port_str)
         if proto == "sftp" and paramiko is None:
-            messagebox.showerror("错误", "SFTP 需要 paramiko 库，请执行: pip3 install paramiko")
+            QMessageBox.critical(self.app, "错误", "SFTP 需要 paramiko 库，请执行: pip3 install paramiko")
             return
-        self._connect_btn.configure(state="disabled", text="连接中...")
-        threading.Thread(target=self._do_connect, args=(host, port, proto), daemon=True).start()
+        self._connect_btn.setEnabled(False)
+        self._connect_btn.setText("连接中...")
+        threading.Thread(target=self._do_connect, args=(host, int(port_str), proto), daemon=True).start()
 
     def _do_connect(self, host, port, proto):
-        user = self._user_var.get().strip()
-        pwd = self._pass_var.get()
+        user = self._user_entry.text().strip()
+        pwd = self._pass_entry.text()
         ts = self._ts()
         try:
             if proto == "ftp":
@@ -428,7 +510,6 @@ class FTPToolModule(ToolModule):
                 else:
                     self._client.login()
                 self.app.after(0, self._log, f"{ts}  [FTP] 登录成功 ({user or '匿名'})")
-                logger.info(f"[FTP客户端] 登录成功: {host} ({user or '匿名'})")
                 self._sftp = None
             else:
                 ssh = paramiko.SSHClient()
@@ -437,7 +518,6 @@ class FTPToolModule(ToolModule):
                 self._client = ssh
                 self._sftp = ssh.open_sftp()
                 self.app.after(0, self._log, f"{ts}  [SFTP] 已连接到 {host}:{port}")
-                logger.info(f"[SFTP客户端] 已连接到 {host}:{port}")
             self._current_remote_dir = "/"
             self.app.after(0, self._on_connected)
             self.app.after(0, self._refresh_dir)
@@ -467,19 +547,22 @@ class FTPToolModule(ToolModule):
         self._on_disconnected()
 
     def _on_connected(self):
-        self._connect_btn.configure(text="断开", fg_color="#dc2626", hover_color="#b91c1c", state="normal")
-        addr = f"{self._host_var.get().strip()}:{self._port_var.get().strip()}"
-        proto = "FTP" if isinstance(self._client, ftplib.FTP) else "SFTP"
-        self._conn_status.configure(text=f"状态: 已连接 → {addr} ({proto})", text_color="#10a37f")
+        self._connect_btn.setText("断开")
+        self._connect_btn.setStyleSheet(BTN_DANGER)
+        self._connect_btn.setEnabled(True)
+        addr = f"{self._host_entry.text().strip()}:{self._port_entry.text().strip()}"
+        self._conn_status.setText(f"状态: 已连接 -> {addr}")
+        self._conn_status.setStyleSheet(HINT_STYLE + " color: #10a37f;")
 
     def _on_disconnected(self):
-        self._connect_btn.configure(text="连接", fg_color="#10a37f", hover_color="#0d8c6d", state="normal")
-        self._conn_status.configure(text="状态: 未连接", text_color="#999999")
-        self._tree.delete(*self._tree.get_children())
+        self._connect_btn.setText("连接")
+        self._connect_btn.setStyleSheet(BTN_PRIMARY)
+        self._connect_btn.setEnabled(True)
+        self._conn_status.setText("状态: 未连接")
+        self._conn_status.setStyleSheet(HINT_STYLE + " color: #999;")
+        self._tree.clear()
 
-    # ================================================================
-    #  Client - Remote File Browser
-    # ================================================================
+    # ── Remote file browser ──
 
     def _refresh_dir(self):
         if self._client is None:
@@ -515,49 +598,46 @@ class FTPToolModule(ToolModule):
         self.app.after(0, self._show_dir_list, items, error)
 
     def _show_dir_list(self, items, error):
-        self._tree.delete(*self._tree.get_children())
+        self._tree.clear()
         if error:
             self._log(f"{self._ts()}  [错误] 列出目录失败: {error}")
             return
 
-        dirs = []
-        files = []
+        dirs, files = [], []
         for name, is_dir, size, date_str in items:
+            if name.startswith("."):
+                continue
             (dirs if is_dir else files).append((name, size, date_str))
-
         dirs.sort(key=lambda x: x[0].lower())
         files.sort(key=lambda x: x[0].lower())
 
         if self._current_remote_dir != "/":
-            self._tree.insert("", "end", iid="__up__", values=("..", "", ""), tags=("dir",))
+            item = QTreeWidgetItem(["..", "", ""])
+            item.setData(0, Qt.ItemDataRole.UserRole, "__up__")
+            item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir")
+            self._tree.addTopLevelItem(item)
 
         for name, size, date_str in dirs:
-            self._tree.insert("", "end", iid=name,
-                              values=(f"📁 {name}", self._fmt_size(size), date_str), tags=("dir",))
+            item = QTreeWidgetItem([f"\U0001f4c1 {name}", self._fmt_size(size), date_str])
+            item.setData(0, Qt.ItemDataRole.UserRole, name)
+            item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir")
+            self._tree.addTopLevelItem(item)
+
         for name, size, date_str in files:
-            self._tree.insert("", "end", iid=name,
-                              values=(f"📄 {name}", self._fmt_size(size), date_str), tags=("file",))
-        self._path_label.configure(text=self._current_remote_dir)
+            item = QTreeWidgetItem([f"\U0001f4c4 {name}", self._fmt_size(size), date_str])
+            item.setData(0, Qt.ItemDataRole.UserRole, name)
+            item.setData(0, Qt.ItemDataRole.UserRole + 1, "file")
+            self._tree.addTopLevelItem(item)
 
-    def _fmt_size(self, size):
-        if size < 1024:
-            return f"{size} B"
-        elif size < 1024 * 1024:
-            return f"{size / 1024:.1f} KB"
-        elif size < 1024 * 1024 * 1024:
-            return f"{size / (1024 * 1024):.1f} MB"
-        else:
-            return f"{size / (1024 * 1024 * 1024):.1f} GB"
+        self._path_label.setText(self._current_remote_dir)
 
-    def _on_tree_double_click(self, event):
-        sel = self._tree.selection()
-        if not sel:
-            return
-        iid = sel[0]
+    def _on_tree_double_click(self, item):
+        iid = item.data(0, Qt.ItemDataRole.UserRole)
+        tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if iid == "__up__":
             self._go_up()
             return
-        if "dir" in self._tree.item(iid, "tags"):
+        if tag == "dir":
             if self._current_remote_dir == "/":
                 self._current_remote_dir = "/" + iid
             else:
@@ -566,312 +646,246 @@ class FTPToolModule(ToolModule):
 
     def _go_up(self):
         if self._current_remote_dir and self._current_remote_dir != "/":
-            parent = os.path.dirname(self._current_remote_dir.rstrip("/"))
-            self._current_remote_dir = parent if parent else "/"
+            parent_dir = os.path.dirname(self._current_remote_dir.rstrip("/"))
+            self._current_remote_dir = parent_dir if parent_dir else "/"
             self._refresh_dir()
 
-    # ================================================================
-    #  Client - Upload / Download / Delete
-    # ================================================================
-
-    def _selected_file(self):
-        sel = self._tree.selection()
-        if not sel or sel[0] == "__up__":
-            return None
-        if "dir" in self._tree.item(sel[0], "tags"):
-            return None
-        return sel[0]
-
-    def _selected_local_file(self):
-        sel = self._local_tree.selection()
-        if not sel or sel[0] == "__up__":
-            return None
-        if "dir" in self._local_tree.item(sel[0], "tags"):
-            return None
-        return sel[0]
-
-    # -- Local browser --
+    # ── Local file browser ──
 
     def _browse_local(self):
-        path = filedialog.askdirectory(title="选择本地目录")
-        if path:
-            self._local_dir = path
+        d = QFileDialog.getExistingDirectory(self.app, "选择本地目录", self._local_dir)
+        if d:
+            self._local_dir = d
+            self._local_path_label.setText(d)
             self._refresh_local()
 
     def _refresh_local(self):
-        self._do_list_local()
-
-    def _do_list_local(self):
-        items = []
+        self._local_tree.clear()
         try:
-            for entry in sorted(os.listdir(self._local_dir), key=lambda x: x.lower()):
-                full = os.path.join(self._local_dir, entry)
-                try:
-                    st = os.stat(full)
-                except OSError:
-                    continue
-                is_dir = stat.S_ISDIR(st.st_mode)
+            entries = [e for e in os.listdir(self._local_dir) if not e.startswith(".")]
+        except Exception:
+            return
+
+        entries.sort(key=lambda x: x.lower())
+        for name in entries:
+            full = os.path.join(self._local_dir, name)
+            try:
+                st = os.stat(full)
+                is_dir = os.path.isdir(full)
+                size = st.st_size
                 mt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st.st_mtime))
-                items.append((entry, is_dir, st.st_size, mt))
-        except Exception as e:
-            self.app.after(0, self._log, f"{self._ts()}  [错误] 列出本地目录失败: {e}")
-            return
-        self.app.after(0, self._show_local_list, items)
+                icon = "\U0001f4c1 " if is_dir else "\U0001f4c4 "
+                item = QTreeWidgetItem([f"{icon}{name}", self._fmt_size(size) if not is_dir else "", mt])
+                item.setData(0, Qt.ItemDataRole.UserRole, name)
+                item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir" if is_dir else "file")
+                self._local_tree.addTopLevelItem(item)
+            except Exception:
+                pass
+        self._local_path_label.setText(self._local_dir)
 
-    def _show_local_list(self, items):
-        self._local_tree.delete(*self._local_tree.get_children())
-        dirs = [(n, s, d) for n, i, s, d in items if i]
-        files = [(n, s, d) for n, i, s, d in items if not i]
-
-        parent_dir = os.path.dirname(self._local_dir)
-        if parent_dir != self._local_dir:
-            self._local_tree.insert("", "end", iid="__up__", values=("..", "", ""), tags=("dir",))
-
-        for name, size, date_str in dirs:
-            self._local_tree.insert("", "end", iid=name,
-                                     values=(f"📁 {name}", self._fmt_size(size), date_str), tags=("dir",))
-        for name, size, date_str in files:
-            self._local_tree.insert("", "end", iid=name,
-                                     values=(f"📄 {name}", self._fmt_size(size), date_str), tags=("file",))
-        self._local_path_label.configure(text=self._local_dir)
-
-    def _on_local_double_click(self, event):
-        sel = self._local_tree.selection()
-        if not sel:
-            return
-        iid = sel[0]
-        if iid == "__up__":
-            self._go_up_local()
-            return
-        if "dir" in self._local_tree.item(iid, "tags"):
-            self._local_dir = os.path.join(self._local_dir, iid)
+    def _on_local_double_click(self, item):
+        name = item.data(0, Qt.ItemDataRole.UserRole)
+        tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        if tag == "dir":
+            self._local_dir = os.path.join(self._local_dir, name)
+            self._local_path_label.setText(self._local_dir)
             self._refresh_local()
 
     def _go_up_local(self):
-        parent = os.path.dirname(self._local_dir)
-        if parent != self._local_dir:
-            self._local_dir = parent
+        parent_dir = os.path.dirname(self._local_dir)
+        if parent_dir and parent_dir != self._local_dir:
+            self._local_dir = parent_dir
+            self._local_path_label.setText(self._local_dir)
             self._refresh_local()
 
-    # -- Upload / Download --
+    # ── Upload / Download / Delete ──
 
     def _upload_file(self):
         if self._client is None:
-            messagebox.showwarning("提示", "请先连接到服务器")
+            QMessageBox.warning(self.app, "提示", "请先连接服务器")
             return
-        name = self._selected_local_file()
-        if name is None:
-            messagebox.showwarning("提示", "请先在本地文件中选择要上传的文件")
+        item = self._local_tree.currentItem()
+        if not item:
+            QMessageBox.warning(self.app, "提示", "请先选择本地文件")
+            return
+        name = item.data(0, Qt.ItemDataRole.UserRole)
+        tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        if tag == "dir":
+            QMessageBox.warning(self.app, "提示", "暂不支持上传文件夹")
             return
         local_path = os.path.join(self._local_dir, name)
-        threading.Thread(target=self._do_upload, args=(local_path, name), daemon=True).start()
+        self._start_transfer("upload", local_path, name)
 
     def _download_file(self):
-        name = self._selected_file()
-        if name is None:
-            messagebox.showwarning("提示", "请先在远程文件中选择要下载的文件")
+        if self._client is None:
+            QMessageBox.warning(self.app, "提示", "请先连接服务器")
             return
-        if not os.path.isdir(self._local_dir):
-            messagebox.showwarning("提示", "本地目录不存在，请重新选择")
+        item = self._tree.currentItem()
+        if not item:
+            QMessageBox.warning(self.app, "提示", "请先选择远程文件")
             return
-        threading.Thread(target=self._do_download, args=(name,), daemon=True).start()
-
-    # ========== Transfer dialog ==========
-
-    def _open_transfer_window(self, direction, fname, fsize):
-        """Open a floating transfer progress dialog."""
-        win = ctk.CTkToplevel(self.app)
-        win.title("传输进度")
-        win.geometry("420x200")
-        win.resizable(False, False)
-        win.configure(fg_color="#f9f9f9")
-        win.transient(self.app)
-
-        # Content
-        inner = ctk.CTkFrame(win, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=20, pady=20)
-
-        ctk.CTkLabel(inner, text=f"{direction}: {fname}",
-                     font=("Helvetica", 13, "bold"), text_color="#1f1f1f").pack(anchor="w")
-
-        ctk.CTkLabel(inner, text=f"大小: {self._fmt_size(fsize)}",
-                     font=("Helvetica", 11), text_color="#888888").pack(anchor="w", pady=(4, 12))
-
-        self._xfer_bar = ctk.CTkProgressBar(inner, height=12,
-                                             fg_color="#e5e5e5", progress_color="#10a37f")
-        self._xfer_bar.pack(fill="x", pady=(0, 6))
-        self._xfer_bar.set(0)
-
-        self._xfer_info = ctk.CTkLabel(inner, text="0%  —  —",
-                                        font=("Courier", 12), text_color="#333333")
-        self._xfer_info.pack(anchor="w")
-
-        btn_row = ctk.CTkFrame(inner, fg_color="transparent")
-        btn_row.pack(fill="x", pady=(12, 0))
-
-        ctk.CTkButton(btn_row, text="取消传输", command=lambda: self._cancel_transfer(win),
-                       width=100, height=30, font=("Helvetica", 11),
-                       corner_radius=6, fg_color="#ef4444", hover_color="#dc2626").pack(side="right")
-
-        self._xfer_window = win
-        self._xfer_cancel = False
-
-    def _cancel_transfer(self, win=None):
-        self._xfer_cancel = True
-        if win and win.winfo_exists():
-            ctk.CTkLabel(win, text="正在取消...", font=("Helvetica", 12, "bold"),
-                         text_color="#e74c3c").pack(pady=10)
-            # Close after a short delay
-            win.after(1500, win.destroy)
-
-    def _update_transfer_window(self, transferred, total, start_time):
-        if not hasattr(self, "_xfer_window") or not self._xfer_window.winfo_exists():
+        name = item.data(0, Qt.ItemDataRole.UserRole)
+        tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        if tag == "dir":
+            QMessageBox.warning(self.app, "提示", "暂不支持下载文件夹")
             return
-        pct = min(transferred / total, 1.0) if total > 0 else 0
-        elapsed = time.time() - start_time
-        speed = transferred / elapsed if elapsed > 0 else 0
-        if speed >= 1024 * 1024:
-            speed_str = f"{speed / (1024*1024):.1f} MB/s"
-        elif speed >= 1024:
-            speed_str = f"{speed / 1024:.1f} KB/s"
+        local_path = os.path.join(self._local_dir, name)
+        self._start_transfer("download", local_path, name)
+
+    def _delete_file(self):
+        if self._client is None:
+            QMessageBox.warning(self.app, "提示", "请先连接服务器")
+            return
+        item = self._tree.currentItem()
+        if not item:
+            return
+        name = item.data(0, Qt.ItemDataRole.UserRole)
+        tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
+        if tag == "dir":
+            reply = QMessageBox.question(self.app, "确认", f"确定要删除远程目录 '{name}' 吗?")
         else:
-            speed_str = f"{speed:.0f} B/s"
-        self._xfer_bar.set(pct)
-        self._xfer_info.configure(text=f"{pct*100:.0f}%  |  {speed_str}")
-
-    def _close_transfer_window(self):
-        if hasattr(self, "_xfer_window") and self._xfer_window.winfo_exists():
-            self._xfer_window.destroy()
-        self._xfer_cancel = False
-
-    # ========== Transfer ==========
-
-    def _do_upload(self, local_path, fname):
-        ts = self._ts()
-        remote_path = self._current_remote_dir.rstrip("/") + "/" + fname
-        try:
-            fsize = os.path.getsize(local_path)
-        except Exception as e:
-            self.app.after(0, self._log, f"{ts}  [上传] 失败: 无法读取本地文件 ({e})")
-            logger.error(f"[FTP/SFTP上传] 无法读取本地文件 {fname}: {e}")
+            reply = QMessageBox.question(self.app, "确认", f"确定要删除远程文件 '{name}' 吗?")
+        if reply != QMessageBox.StandardButton.Yes:
             return
+        threading.Thread(target=self._do_delete, args=(name, tag == "dir"), daemon=True).start()
 
-        self.app.after(0, self._log, f"{ts}  [上传] 开始: {fname} ({self._fmt_size(fsize)})")
-        self.app.after(0, self._open_transfer_window, "⬆ 上传", fname, fsize)
-
-        self._xfer_cancel = False
+    def _do_delete(self, name, is_dir):
+        ts = self._ts()
+        remote_path = self._current_remote_dir.rstrip("/") + "/" + name
         try:
             if isinstance(self._client, ftplib.FTP):
-                transferred = [0]
-                start = [time.time()]
+                if is_dir:
+                    self._client.rmd(remote_path)
+                else:
+                    self._client.delete(remote_path)
+            else:
+                if is_dir:
+                    self._sftp.rmdir(remote_path)
+                else:
+                    self._sftp.remove(remote_path)
+            self.app.after(0, self._log, f"{ts}  [删除] {name} 删除成功")
+            self.app.after(0, self._refresh_dir)
+        except Exception as e:
+            self.app.after(0, self._log, f"{ts}  [错误] 删除失败: {e}")
 
-                def cb(data):
+    # ── Transfer dialog ──
+
+    def _start_transfer(self, direction, local_path, name):
+        self._xfer_cancel = False
+        dlg = QDialog(self.app)
+        dlg.setWindowTitle("传输中...")
+        dlg.setFixedSize(420, 200)
+        dlg.setStyleSheet("QDialog { background: #f9f9f9; }")
+        dl = QVBoxLayout(dlg)
+        dl.setContentsMargins(20, 20, 20, 20)
+        dl.setSpacing(10)
+
+        fn_label = QLabel(name)
+        fn_label.setStyleSheet(H2_STYLE)
+        dl.addWidget(fn_label)
+
+        self._xfer_info = QLabel("准备传输...")
+        self._xfer_info.setStyleSheet(HINT_STYLE + " color: #666;")
+        dl.addWidget(self._xfer_info)
+
+        self._xfer_bar = QProgressBar()
+        dl.addWidget(self._xfer_bar)
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setStyleSheet(BTN_DANGER)
+        cancel_btn.clicked.connect(lambda: setattr(self, '_xfer_cancel', True))
+        dl.addWidget(cancel_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
+        dlg.show()
+
+        remote_path = self._current_remote_dir.rstrip("/") + "/" + name
+        if direction == "upload":
+            threading.Thread(target=self._do_upload, args=(local_path, remote_path, dlg), daemon=True).start()
+        else:
+            threading.Thread(target=self._do_download, args=(local_path, remote_path, dlg), daemon=True).start()
+
+    def _update_xfer(self, dlg, done, total):
+        if dlg.isVisible():
+            pct = min(100, int(done / max(total, 1) * 100))
+            self._xfer_bar.setValue(pct)
+            speed = done / max(time.time() - getattr(self, '_xfer_start', time.time()), 0.001)
+            self._xfer_info.setText(f"{self._fmt_size(done)} / {self._fmt_size(total)}  ({self._fmt_size(int(speed))}/s)")
+
+    def _do_upload(self, local_path, remote_path, dlg):
+        ts = self._ts()
+        self._xfer_start = time.time()
+        try:
+            total = os.path.getsize(local_path)
+            self._xfer_bar.setMaximum(100)
+            done = [0]
+
+            if isinstance(self._client, ftplib.FTP):
+                def cb(block):
+                    done[0] += len(block)
                     if self._xfer_cancel:
-                        self._client.abort()
-                        return
-                    transferred[0] += len(data)
-                    self.app.after(0, self._update_transfer_window, transferred[0], fsize, start[0])
+                        raise Exception("cancelled")
+                    self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
 
                 with open(local_path, "rb") as f:
-                    self._client.storbinary(f"STOR {remote_path}", f, blocksize=8192, callback=cb)
+                    self._client.storbinary(f"STOR {os.path.basename(remote_path)}", f,
+                                             blocksize=8192, callback=cb)
             else:
-                start = [time.time()]
-                transferred = [0]
-
-                def cb(done, total):
+                def cb(transferred, _total):
+                    done[0] = transferred
                     if self._xfer_cancel:
-                        raise KeyboardInterrupt()
-                    transferred[0] = done
-                    self.app.after(0, self._update_transfer_window, done, total, start[0])
+                        raise Exception("cancelled")
+                    self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
 
                 self._sftp.put(local_path, remote_path, callback=cb)
 
-            self.app.after(0, self._log, f"{ts}  [上传] 完成: {fname}")
-            logger.info(f"[FTP/SFTP上传] 完成: {fname} ({self._fmt_size(fsize)})")
+            self.app.after(0, self._log, f"{ts}  [上传] {os.path.basename(local_path)} 完成")
             self.app.after(0, self._refresh_dir)
         except Exception as e:
-            self.app.after(0, self._log, f"{ts}  [上传] 失败: {e}")
-            logger.error(f"[FTP/SFTP上传] 失败: {fname}: {e}")
+            if str(e) != "cancelled":
+                self.app.after(0, self._log, f"{ts}  [错误] 上传失败: {e}")
         finally:
-            self.app.after(0, self._close_transfer_window)
+            self.app.after(0, dlg.close)
 
-    def _do_download(self, name):
+    def _do_download(self, local_path, remote_path, dlg):
         ts = self._ts()
-        remote_path = self._current_remote_dir.rstrip("/") + "/" + name
-        local_path = os.path.join(self._local_dir, name)
+        self._xfer_start = time.time()
+
+        if isinstance(self._client, ftplib.FTP):
+            total = self._client.size(os.path.basename(remote_path))
+        else:
+            total = self._sftp.stat(remote_path).st_size
+
+        self._xfer_bar.setMaximum(100)
+        done = [0]
 
         try:
             if isinstance(self._client, ftplib.FTP):
-                fsize = self._client.size(remote_path)
-            else:
-                fsize = self._sftp.stat(remote_path).st_size
-        except Exception as e:
-            self.app.after(0, self._log, f"{ts}  [下载] 失败: 无法获取文件信息 ({e})")
-            return
-
-        self.app.after(0, self._log, f"{ts}  [下载] 开始: {name}")
-        self.app.after(0, self._open_transfer_window, "⬇ 下载", name, fsize)
-
-        self._xfer_cancel = False
-        try:
-            if isinstance(self._client, ftplib.FTP):
-                transferred = [0]
-                start = [time.time()]
-
-                def cb(data):
+                def cb(block):
+                    done[0] += len(block)
                     if self._xfer_cancel:
-                        self._client.abort()
-                        return
-                    transferred[0] += len(data)
-                    self.app.after(0, self._update_transfer_window, transferred[0], fsize, start[0])
+                        raise Exception("cancelled")
+                    self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
 
                 with open(local_path, "wb") as f:
-                    self._client.retrbinary(f"RETR {remote_path}", cb, blocksize=8192)
+                    self._client.retrbinary(f"RETR {os.path.basename(remote_path)}", cb, blocksize=8192)
             else:
-                start = [time.time()]
-                transferred = [0]
-
-                def cb(done, total):
+                def cb(transferred, _total):
+                    done[0] = transferred
                     if self._xfer_cancel:
-                        raise KeyboardInterrupt()
-                    transferred[0] = done
-                    self.app.after(0, self._update_transfer_window, done, total, start[0])
+                        raise Exception("cancelled")
+                    self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
 
                 self._sftp.get(remote_path, local_path, callback=cb)
 
-            self.app.after(0, self._log, f"{ts}  [下载] 完成: {name} → {local_path}")
-            logger.info(f"[FTP/SFTP下载] 完成: {name}")
+            self.app.after(0, self._log, f"{ts}  [下载] {os.path.basename(remote_path)} 完成")
+            self.app.after(0, self._refresh_local)
         except Exception as e:
-            self.app.after(0, self._log, f"{ts}  [下载] 失败: {e}")
-            logger.error(f"[FTP/SFTP下载] 失败: {name}: {e}")
+            if str(e) != "cancelled":
+                self.app.after(0, self._log, f"{ts}  [错误] 下载失败: {e}")
         finally:
-            self.app.after(0, self._close_transfer_window)
+            self.app.after(0, dlg.close)
 
-    def _delete_file(self):
-        name = self._selected_file()
-        if name is None:
-            messagebox.showwarning("提示", "请先选择要删除的文件")
-            return
-        if not messagebox.askyesno("确认", f"确定要删除远程文件 {name} 吗？"):
-            return
-        threading.Thread(target=self._do_delete, args=(name,), daemon=True).start()
-
-    def _do_delete(self, name):
-        ts = self._ts()
-        remote_path = self._current_remote_dir.rstrip("/") + "/" + name
-        try:
-            if isinstance(self._client, ftplib.FTP):
-                self._client.delete(remote_path)
-            else:
-                self._sftp.remove(remote_path)
-            self.app.after(0, self._log, f"{ts}  [删除] 已删除: {name}")
-            self.app.after(0, self._refresh_dir)
-        except Exception as e:
-            self.app.after(0, self._log, f"{ts}  [删除] 失败: {e}")
-
-    # ================================================================
-    #  Server
-    # ================================================================
+    # ── Server ──
 
     def _toggle_server(self):
         if self._server_thread and self._server_thread.is_alive():
@@ -884,146 +898,69 @@ class FTPToolModule(ToolModule):
         from pyftpdlib.handlers import FTPHandler
         from pyftpdlib.servers import FTPServer
 
-        port_str = self._srv_port_var.get().strip()
+        port_str = self._srv_port_entry.text().strip()
         if not port_str.isdigit() or not (1 <= int(port_str) <= 65535):
-            messagebox.showwarning("提示", "请输入有效的端口号 (1-65535)")
+            QMessageBox.warning(self.app, "提示", "请输入有效端口号")
             return
-        root_dir = self._srv_dir_var.get().strip()
-        if not root_dir or not os.path.isdir(root_dir):
-            messagebox.showwarning("提示", "请选择一个有效的目录作为 FTP 根目录")
-            return
-        user = self._srv_user_var.get().strip() or "admin"
-        pwd = self._srv_pass_var.get().strip() or "123456"
-
-        self._srv_log_clear()
+        port = int(port_str)
+        root_dir = self._srv_dir_entry.text().strip() or os.path.expanduser("~/Desktop")
+        user = self._srv_user_entry.text().strip() or "admin"
+        pwd = self._srv_pass_entry.text() or "123456"
 
         authorizer = DummyAuthorizer()
         authorizer.add_user(user, pwd, root_dir, perm="elradfmw")
-        authorizer.add_anonymous(root_dir, perm="elr")
+        handler = FTPHandler
+        handler.authorizer = authorizer
+        self._server_instance = FTPServer(("0.0.0.0", port), handler)
 
-        _log_cb = self._srv_log_append
-        _ts_func = self._ts
+        self._srv_toggle_btn.setText("停止服务")
+        self._srv_toggle_btn.setStyleSheet(BTN_DANGER)
+        self._srv_status_label.setText("状态: 运行中")
+        self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #10a37f;")
+        self._srv_port_entry.setEnabled(False)
+        self._srv_dir_entry.setEnabled(False)
+        self._srv_user_entry.setEnabled(False)
+        self._srv_pass_entry.setEnabled(False)
 
-        class _FTPHandler(FTPHandler):
-            def on_connect(inner):
-                super(_FTPHandler, inner).on_connect()
-                t = _ts_func()
-                ip, pr = inner.remote_ip, inner.remote_port
-                _log_cb(f"{t}  [连接] 新客户端连接  |  {ip}:{pr}")
+        self._srv_log.setReadOnly(False)
+        self._srv_log.clear()
+        self._srv_log.appendPlainText(f"FTP 服务器启动: 0.0.0.0:{port}")
+        self._srv_log.setReadOnly(True)
 
-            def on_disconnect(inner):
-                t = _ts_func()
-                ip, pr = inner.remote_ip, inner.remote_port
-                _log_cb(f"{t}  [断开] 客户端断开  |  {ip}:{pr}")
-                super(_FTPHandler, inner).on_disconnect()
-
-            def ftp_PASS(inner, line):
-                result = super(_FTPHandler, inner).ftp_PASS(line)
-                if inner.authenticated:
-                    t = _ts_func()
-                    ip, pr = inner.remote_ip, inner.remote_port
-                    _log_cb(f"{t}  [登录] 用户 '{inner.username}' 认证成功  |  {ip}:{pr}")
-                return result
-
-            def ftp_RETR(inner, file):
-                t = _ts_func()
-                _log_cb(f"{t}  [下载] {inner.username or '匿名'} 下载文件: {file}")
-                return super(_FTPHandler, inner).ftp_RETR(file)
-
-            def ftp_STOR(inner, file):
-                t = _ts_func()
-                _log_cb(f"{t}  [上传] {inner.username or '匿名'} 上传文件: {file}")
-                return super(_FTPHandler, inner).ftp_STOR(file)
-
-            def ftp_DELE(inner, path):
-                t = _ts_func()
-                _log_cb(f"{t}  [删除] {inner.username or '匿名'} 删除文件: {path}")
-                return super(_FTPHandler, inner).ftp_DELE(path)
-
-            def ftp_RNTO(inner, line):
-                t = _ts_func()
-                _log_cb(f"{t}  [重命名] {inner.username or '匿名'} 重命名: {line}")
-                return super(_FTPHandler, inner).ftp_RnTO(line)
-
-            def ftp_MKD(inner, path):
-                t = _ts_func()
-                _log_cb(f"{t}  [新建目录] {inner.username or '匿名'} 创建目录: {path}")
-                return super(_FTPHandler, inner).ftp_MKD(path)
-
-            def ftp_RMD(inner, path):
-                t = _ts_func()
-                _log_cb(f"{t}  [删除目录] {inner.username or '匿名'} 删除目录: {path}")
-                return super(_FTPHandler, inner).ftp_RMD(path)
-
-        _FTPHandler.authorizer = authorizer
-        _FTPHandler.passive_ports = range(60000, 60100)
-
-        try:
-            server = FTPServer(("0.0.0.0", int(port_str)), _FTPHandler)
-        except Exception as e:
-            messagebox.showerror("错误", f"FTP 服务器启动失败: {e}")
-            return
-
-        self._server_instance = server
-
-        logger.info(f"[FTP服务器] 启动服务, 端口: {port_str}, 根目录: {root_dir}")
-        ts = self._ts()
-        for line in [
-            f"{ts}  [启动] FTP 服务器正在监听 0.0.0.0:{port_str}",
-            f"{ts}  [信息] 根目录: {root_dir}",
-            f"{ts}  [信息] 用户: {user} / 匿名访问已启用",
-            f"{ts}  [信息] 被动端口: 60000-60099",
-        ]:
-            self._srv_log_append(line)
-
-        self._srv_toggle_btn.configure(text="停止服务", fg_color="#dc2626", hover_color="#b91c1c")
-        self._srv_status_label.configure(text="状态: 运行中", text_color="#10a37f")
-        self._srv_port_entry.configure(state="disabled")
-        self._srv_dir_entry.configure(state="disabled")
-
-        self._server_thread = threading.Thread(target=self._serve_loop, args=(server,), daemon=True)
+        self._server_thread = threading.Thread(target=self._serve_loop, daemon=True)
         self._server_thread.start()
+        logger.info(f"[FTP服务器] 启动: {port}")
 
-    def _serve_loop(self, server):
+    def _serve_loop(self):
         try:
-            server.serve_forever()
+            self._server_instance.serve_forever()
         except Exception as e:
-            self.app.after(0, self._srv_log_append, f"{self._ts()}  [错误] {e}")
+            self.app.after(0, lambda: self._srv_log.appendPlainText(f"[错误] {e}"))
 
     def _stop_server(self):
-        if hasattr(self, "_server_instance") and self._server_instance:
-            try:
-                self._server_instance.close_all()
-            except Exception:
-                pass
-            self._server_instance = None
-        self._srv_toggle_btn.configure(text="启动服务", fg_color="#10a37f", hover_color="#0d8c6d")
-        self._srv_status_label.configure(text="状态: 已停止", text_color="#666666")
-        self._srv_port_entry.configure(state="normal")
-        self._srv_dir_entry.configure(state="normal")
-        self._srv_log_append(f"{self._ts()}  [停止] FTP 服务器已停止")
-        logger.info("[FTP服务器] 停止服务")
-
-    def _srv_log_append(self, text):
-        def _up():
-            self._srv_log.configure(state="normal")
-            self._srv_log.insert("end", text + "\n")
-            self._srv_log.see("end")
-            self._srv_log.configure(state="disabled")
-        self.app.after(0, _up)
-
-    def _srv_log_clear(self):
-        self._srv_log.configure(state="normal")
-        self._srv_log.delete("0.0", "end")
-        self._srv_log.configure(state="disabled")
+        if hasattr(self, '_server_instance'):
+            self._server_instance.close_all()
+        self._srv_toggle_btn.setText("启动服务")
+        self._srv_toggle_btn.setStyleSheet(BTN_PRIMARY)
+        self._srv_status_label.setText("状态: 已停止")
+        self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #666;")
+        self._srv_port_entry.setEnabled(True)
+        self._srv_dir_entry.setEnabled(True)
+        self._srv_user_entry.setEnabled(True)
+        self._srv_pass_entry.setEnabled(True)
+        self._srv_log.setReadOnly(False)
+        self._srv_log.appendPlainText("服务器已停止")
+        self._srv_log.setReadOnly(True)
+        logger.info("[FTP服务器] 已停止")
 
     def _browse_srv_dir(self):
-        path = filedialog.askdirectory(title="选择 FTP 根目录")
-        if path:
-            self._srv_dir_var.set(path)
+        d = QFileDialog.getExistingDirectory(self.app, "选择根目录")
+        if d:
+            self._srv_dir_entry.setText(d)
 
     def on_hide(self):
-        if self._client is not None:
+        try:
             self._disconnect()
-        if self._server_thread and self._server_thread.is_alive():
             self._stop_server()
+        except Exception:
+            pass

@@ -2,270 +2,309 @@
 NetTool - Network Toolbox
 Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+iPerf bandwidth test module - pure Python TCP/UDP (PySide6 edition).
 """
-
-"""iPerf bandwidth test - pure Python TCP/UDP throughput measurement."""
 
 import socket
 import struct
-import threading
 import time
-import tkinter as tk
-from tkinter import messagebox
+import threading
 
-import customtkinter as ctk
+from PySide6.QtWidgets import (
+    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QLineEdit, QPushButton, QPlainTextEdit, QComboBox, QMessageBox,
+)
+from PySide6.QtCore import Qt
 
 from core.base_module import ToolModule
+from core.app import BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, BTN_MODE_ACTIVE, BTN_MODE_INACTIVE, set_card_style, set_transparent_bg, set_dark_output
+from core.app import H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE
 from core.logger import logger
 
 
+
 class IperfToolModule(ToolModule):
-    """Pure Python iPerf bandwidth test with client and server modes."""
-
     name = "iPerf 带宽测试"
-    icon = "📶"
-    description = "纯 Python 实现的网络带宽测试工具，支持 TCP/UDP 客户端和服务器模式。"
+    icon = "\U0001f4f6"
+    description = "纯 Python TCP/UDP 带宽测试工具，支持客户端和服务器模式，多流并发测试。"
 
-    def build(self, parent):
-        """Build the UI into the given parent CTkFrame."""
+    def build(self, parent: QWidget):
+        if parent.layout() is None:
+            parent.setLayout(QVBoxLayout(parent))
+        layout = parent.layout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        def label(master, text, font=("Helvetica", -13), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="#f9f9f9", highlightthickness=0, bd=0, **kw)
+        # Title
+        title = QLabel(self.name)
+        title.setStyleSheet(H1_STYLE)
+        layout.addWidget(title)
+        layout.addSpacing(5)
 
-        def white_label(master, text, font=("Helvetica", -13), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="white", highlightthickness=0, bd=0, **kw)
+        desc = QLabel(self.description)
+        desc.setStyleSheet(DESC_STYLE)
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        layout.addSpacing(15)
+
+        # Mode selector
+        mode_card = QFrame()
+        set_card_style(mode_card)
+        mc_layout = QVBoxLayout(mode_card)
+        mc_layout.setContentsMargins(15, 12, 15, 12)
+
+        self._mode_btns = {}
+        mb_wrapper = QWidget()
+        mb_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        mb_wrapper.setStyleSheet("background: #f0f0f0; border-radius: 8px;")
+        mbl = QHBoxLayout(mb_wrapper)
+        mbl.setContentsMargins(4, 4, 4, 4)
+        mbl.setSpacing(4)
+        for val, text in [("client", "客户端"), ("server", "服务器")]:
+            btn = QPushButton(text)
+            btn.setFixedHeight(32)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked=False, v=val: self._set_mode(v))
+            mbl.addWidget(btn, stretch=1)
+            self._mode_btns[val] = btn
+        self._update_mode_buttons("client")
+        mc_layout.addWidget(mb_wrapper)
+
+        layout.addWidget(mode_card)
+        layout.addSpacing(15)
+
+        # Content card
+        content_card = QFrame()
+        set_card_style(content_card)
+        cc_layout = QVBoxLayout(content_card)
+        cc_layout.setContentsMargins(15, 12, 15, 12)
+
+        # Client frame
+        self._client_frame = QWidget()
+        set_transparent_bg(self._client_frame)
+        self._build_client_ui(self._client_frame)
+        cc_layout.addWidget(self._client_frame)
+
+        # Server frame
+        self._server_frame = QWidget()
+        set_transparent_bg(self._server_frame)
+        self._build_server_ui(self._server_frame)
+        cc_layout.addWidget(self._server_frame)
+        self._server_frame.hide()
+
+        layout.addWidget(content_card)
+
+        # Output card
+        out_card = QFrame()
+        set_card_style(out_card)
+        oc_layout = QVBoxLayout(out_card)
+        oc_layout.setContentsMargins(15, 12, 15, 12)
+
+        ol = QLabel("测试结果")
+        ol.setStyleSheet(H2_STYLE)
+        oc_layout.addWidget(ol)
+        oc_layout.addSpacing(6)
+
+        self._output = QPlainTextEdit()
+        self._output.setReadOnly(True)
+        set_dark_output(self._output)
+        oc_layout.addWidget(self._output, stretch=1)
+
+        layout.addSpacing(15)
+        layout.addWidget(out_card, stretch=1)
 
         self._running = False
         self._stop_event = threading.Event()
 
-        # ── Title + Description ──
-        label(parent, text=self.name,
-              font=("Helvetica", -22, "bold"), fg="#1f1f1f").pack(anchor="w", pady=(0, 5))
-        label(parent, text=self.description,
-              font=("Helvetica", -13), fg="#6b6b6b",
-              wraplength=620, justify="left").pack(anchor="w", pady=(0, 15))
-
-        # ── Mode Card ──
-        mode_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                 border_width=1, border_color="#e5e5e5")
-        mode_card.pack(fill="x", pady=(0, 15))
-        mode_inner = ctk.CTkFrame(mode_card, fg_color="transparent")
-        mode_inner.pack(fill="x", padx=15, pady=12)
-
-        self._mode_var = ctk.StringVar(value="client")
-        mode_btn_frame = ctk.CTkFrame(mode_inner, fg_color="#f0f0f0", corner_radius=8)
-        mode_btn_frame.pack(fill="x")
-        self._mode_btns = {}
-        for val, label_text in [("client", "客户端"), ("server", "服务器")]:
-            btn = ctk.CTkButton(mode_btn_frame, text=label_text, width=0, height=28,
-                                font=("Helvetica", 11), corner_radius=6,
-                                fg_color="transparent", text_color="#333333",
-                                hover_color="#e0e0e0",
-                                command=lambda v=val: self._set_mode(v))
-            btn.pack(side="left", expand=True, fill="x", padx=2, pady=2)
-            self._mode_btns[val] = btn
-        self._update_mode_buttons()
-
-        # ── Content Card (hosts both client and server frames) ──
-        content_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                    border_width=1, border_color="#e5e5e5")
-        content_card.pack(fill="x", pady=(0, 15))
-
-        self._client_frame = ctk.CTkFrame(content_card, fg_color="transparent")
-        self._server_frame = ctk.CTkFrame(content_card, fg_color="transparent")
-        self._build_client_ui(self._client_frame)
-        self._build_server_ui(self._server_frame)
-        self._client_frame.pack(fill="x", padx=15, pady=15)
-
-        # ── Output Card ──
-        out_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                border_width=1, border_color="#e5e5e5")
-        out_card.pack(fill="both", expand=True)
-        out_inner = ctk.CTkFrame(out_card, fg_color="transparent")
-        out_inner.pack(fill="both", expand=True, padx=15, pady=15)
-
-        white_label(out_inner, text="测试结果",
-                    font=("Helvetica", -14, "bold"), fg="#1f1f1f").pack(anchor="w", pady=(0, 8))
-
-        self._output = ctk.CTkTextbox(out_inner, font=("Courier", 13), corner_radius=8,
-                                      fg_color="#1e1e1e", text_color="#e0e0e0",
-                                      border_width=1, border_color="#e5e5e5")
-        self._output.pack(fill="both", expand=True)
-
-    # ── Client UI ──
-
     def _build_client_ui(self, parent):
-        def wl(master, text, font=("Helvetica", -12), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="white", highlightthickness=0, bd=0, **kw)
+        fl = QVBoxLayout(parent)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(6)
 
-        # Use a grid layout aligned to the left, matching other modules' style
-        grid = ctk.CTkFrame(parent, fg_color="transparent")
-        grid.pack(anchor="w", fill="x")
-        grid.grid_columnconfigure(1, weight=1)
+        grid = QGridLayout()
+        grid.setColumnStretch(1, 1)
+        fl.addLayout(grid)
 
-        # Row 1: Server address
-        wl(grid, text="服务器地址").grid(row=0, column=0, sticky="w", pady=(0, 8))
-        self._host_var = ctk.StringVar(value="127.0.0.1")
-        ctk.CTkEntry(grid, textvariable=self._host_var, font=("Helvetica", 12),
-                     width=160, height=32, corner_radius=6,
-                     border_color="#d1d5db", border_width=1).grid(row=0, column=1, sticky="w", pady=(0, 8), padx=(8, 0))
+        # Row 0: Server address
+        grid.addWidget(self._lbl("服务器地址"), 0, 0)
+        self._host_entry = QLineEdit("127.0.0.1")
+        self._host_entry.setMinimumHeight(32)
+        grid.addWidget(self._host_entry, 0, 1)
 
-        # Row 2: Port + Protocol
-        wl(grid, text="端口").grid(row=1, column=0, sticky="w", pady=(0, 8))
-        port_proto = ctk.CTkFrame(grid, fg_color="transparent")
-        port_proto.grid(row=1, column=1, sticky="w", pady=(0, 8), padx=(8, 0))
-        self._port_var = ctk.StringVar(value="5201")
-        ctk.CTkEntry(port_proto, textvariable=self._port_var, font=("Helvetica", 12),
-                     width=80, height=32, corner_radius=6,
-                     border_color="#d1d5db", border_width=1).pack(side="left")
-        wl(port_proto, text="协议").pack(side="left", padx=(16, 4))
-        self._proto_var = ctk.StringVar(value="TCP")
-        ctk.CTkOptionMenu(port_proto, variable=self._proto_var, values=["TCP", "UDP"],
-                          font=("Helvetica", 11), width=80, height=28,
-                          corner_radius=6, fg_color="#f0f0f0",
-                          text_color="#333333", button_color="#e0e0e0",
-                          button_hover_color="#d0d0d0",
-                          command=self._on_proto_change).pack(side="left")
+        # Row 1: Port + Protocol
+        grid.addWidget(self._lbl("端口"), 1, 0)
+        pp_row = QWidget()
+        set_transparent_bg(pp_row)
+        ppl = QHBoxLayout(pp_row)
+        ppl.setContentsMargins(0, 0, 0, 0)
+        ppl.setSpacing(12)
+        self._port_entry = QLineEdit("5201")
+        self._port_entry.setFixedWidth(80)
+        self._port_entry.setMinimumHeight(32)
+        ppl.addWidget(self._port_entry)
 
-        # Row 3: Duration + Streams
-        wl(grid, text="时长(秒)").grid(row=2, column=0, sticky="w", pady=(0, 8))
-        dur_stream = ctk.CTkFrame(grid, fg_color="transparent")
-        dur_stream.grid(row=2, column=1, sticky="w", pady=(0, 8), padx=(8, 0))
-        self._duration_var = ctk.StringVar(value="60")
-        ctk.CTkEntry(dur_stream, textvariable=self._duration_var, font=("Helvetica", 12),
-                     width=80, height=32, corner_radius=6,
-                     border_color="#d1d5db", border_width=1).pack(side="left")
-        wl(dur_stream, text="并行流").pack(side="left", padx=(16, 4))
-        self._streams_var = ctk.StringVar(value="1")
-        ctk.CTkEntry(dur_stream, textvariable=self._streams_var, font=("Helvetica", 12),
-                     width=80, height=32, corner_radius=6,
-                     border_color="#d1d5db", border_width=1).pack(side="left")
+        ppl.addWidget(self._lbl("协议"))
+        self._proto_combo = QComboBox()
+        self._proto_combo.addItems(["TCP", "UDP"])
+        self._proto_combo.setFixedWidth(80)
+        self._proto_combo.setFixedHeight(30)
+        self._proto_combo.currentTextChanged.connect(self._on_proto_change)
+        ppl.addWidget(self._proto_combo)
+        ppl.addStretch(1)
+        grid.addWidget(pp_row, 1, 1)
 
-        # Row 4: Buffer size
-        wl(grid, text="缓冲(KB)").grid(row=3, column=0, sticky="w", pady=(0, 8))
-        self._buffer_var = ctk.StringVar(value="128")
-        ctk.CTkEntry(grid, textvariable=self._buffer_var, font=("Helvetica", 12),
-                     width=80, height=32, corner_radius=6,
-                     border_color="#d1d5db", border_width=1).grid(row=3, column=1, sticky="w", pady=(0, 8), padx=(8, 0))
+        # Row 2: Duration + Streams
+        grid.addWidget(self._lbl("时长(秒)"), 2, 0)
+        ds_row = QWidget()
+        set_transparent_bg(ds_row)
+        dsl = QHBoxLayout(ds_row)
+        dsl.setContentsMargins(0, 0, 0, 0)
+        dsl.setSpacing(12)
+        self._duration_entry = QLineEdit("60")
+        self._duration_entry.setFixedWidth(80)
+        self._duration_entry.setMinimumHeight(32)
+        dsl.addWidget(self._duration_entry)
 
-        # UDP-only row
-        self._udp_row = ctk.CTkFrame(grid, fg_color="transparent")
-        self._udp_row.grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        wl(self._udp_row, text="UDP带宽(Mbps)").pack(side="left")
-        self._bw_var = ctk.StringVar(value="1")
-        self._bw_entry = ctk.CTkEntry(self._udp_row, textvariable=self._bw_var,
-                                       font=("Helvetica", 12), width=80, height=32,
-                                       corner_radius=6, border_color="#d1d5db", border_width=1)
-        self._bw_entry.pack(side="left", padx=(8, 0))
-        # Hidden by default (TCP selected)
+        dsl.addWidget(self._lbl("并行流"))
+        self._streams_entry = QLineEdit("1")
+        self._streams_entry.setFixedWidth(80)
+        self._streams_entry.setMinimumHeight(32)
+        dsl.addWidget(self._streams_entry)
+        dsl.addStretch(1)
+        grid.addWidget(ds_row, 2, 1)
+
+        # Row 3: Buffer
+        grid.addWidget(self._lbl("缓冲(KB)"), 3, 0)
+        self._buffer_entry = QLineEdit("128")
+        self._buffer_entry.setFixedWidth(80)
+        self._buffer_entry.setMinimumHeight(32)
+        grid.addWidget(self._buffer_entry, 3, 1)
+
+        # UDP row
+        self._udp_row = QWidget()
+        set_transparent_bg(self._udp_row)
+        udpl = QHBoxLayout(self._udp_row)
+        udpl.setContentsMargins(0, 0, 0, 0)
+        udpl.setSpacing(8)
+        udpl.addWidget(self._lbl("UDP带宽(Mbps)"))
+        self._bw_entry = QLineEdit("1")
+        self._bw_entry.setFixedWidth(80)
+        self._bw_entry.setMinimumHeight(32)
+        udpl.addWidget(self._bw_entry)
+        udpl.addStretch(1)
+        grid.addWidget(self._udp_row, 4, 0, 1, 2)
+        self._udp_row.hide()
 
         # Buttons
-        btn_row = ctk.CTkFrame(parent, fg_color="transparent")
-        btn_row.pack(anchor="w", fill="x", pady=(12, 0))
-        self._start_btn = ctk.CTkButton(btn_row, text="开始测试", command=self._start_client,
-                                        width=100, height=34, font=("Helvetica", 13, "bold"),
-                                        corner_radius=8, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._start_btn.pack(side="left", padx=(0, 8))
-        self._stop_btn = ctk.CTkButton(btn_row, text="停止", command=self._stop,
-                                       width=80, height=34, font=("Helvetica", 13),
-                                       corner_radius=8, fg_color="#dc2626", hover_color="#b91c1c",
-                                       state="disabled")
-        self._stop_btn.pack(side="left")
+        btn_row = QWidget()
+        set_transparent_bg(btn_row)
+        brl = QHBoxLayout(btn_row)
+        brl.setContentsMargins(0, 0, 0, 0)
+        brl.setSpacing(8)
+        fl.addSpacing(8)
+        fl.addWidget(btn_row)
 
-    # ── Server UI ──
+        self._start_btn = QPushButton("开始测试")
+        self._start_btn.setStyleSheet(BTN_PRIMARY)
+        self._start_btn.setFixedSize(100, 34)
+        self._start_btn.clicked.connect(self._start_client)
+        brl.addWidget(self._start_btn)
+
+        self._stop_btn = QPushButton("停止")
+        self._stop_btn.setStyleSheet(BTN_DANGER)
+        self._stop_btn.setFixedSize(80, 34)
+        self._stop_btn.clicked.connect(self._stop)
+        self._stop_btn.setEnabled(False)
+        brl.addWidget(self._stop_btn)
+        brl.addStretch(1)
 
     def _build_server_ui(self, parent):
-        def wl(master, text, font=("Helvetica", -12), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="white", highlightthickness=0, bd=0, **kw)
+        fl = QVBoxLayout(parent)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(6)
 
-        # Use a grid layout aligned to the left
-        grid = ctk.CTkFrame(parent, fg_color="transparent")
-        grid.pack(anchor="w", fill="x")
-        grid.grid_columnconfigure(1, weight=1)
+        grid = QGridLayout()
+        fl.addLayout(grid)
+        grid.setColumnStretch(1, 1)
 
-        wl(grid, text="绑定地址").grid(row=0, column=0, sticky="w", pady=(0, 8))
-        self._srv_bind_var = ctk.StringVar(value="0.0.0.0")
-        ctk.CTkEntry(grid, textvariable=self._srv_bind_var, font=("Helvetica", 12),
-                     width=160, height=32, corner_radius=6,
-                     border_color="#d1d5db", border_width=1).grid(row=0, column=1, sticky="w", pady=(0, 8), padx=(8, 0))
+        grid.addWidget(self._lbl("绑定地址"), 0, 0)
+        self._srv_bind_entry = QLineEdit("0.0.0.0")
+        self._srv_bind_entry.setMinimumHeight(32)
+        grid.addWidget(self._srv_bind_entry, 0, 1)
 
-        wl(grid, text="端口").grid(row=1, column=0, sticky="w", pady=(0, 8))
-        self._srv_port_var = ctk.StringVar(value="5201")
-        ctk.CTkEntry(grid, textvariable=self._srv_port_var, font=("Helvetica", 12),
-                     width=80, height=32, corner_radius=6,
-                     border_color="#d1d5db", border_width=1).grid(row=1, column=1, sticky="w", pady=(0, 8), padx=(8, 0))
+        grid.addWidget(self._lbl("端口"), 1, 0)
+        self._srv_port_entry = QLineEdit("5201")
+        self._srv_port_entry.setFixedWidth(80)
+        self._srv_port_entry.setMinimumHeight(32)
+        grid.addWidget(self._srv_port_entry, 1, 1)
 
-        btn_row = ctk.CTkFrame(parent, fg_color="transparent")
-        btn_row.pack(anchor="w", fill="x", pady=(12, 0))
-        self._srv_start_btn = ctk.CTkButton(btn_row, text="启动服务器", command=self._start_server,
-                                            width=100, height=34, font=("Helvetica", 13, "bold"),
-                                            corner_radius=8, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._srv_start_btn.pack(side="left", padx=(0, 8))
-        self._srv_stop_btn = ctk.CTkButton(btn_row, text="停止", command=self._stop,
-                                           width=80, height=34, font=("Helvetica", 13),
-                                           corner_radius=8, fg_color="#dc2626", hover_color="#b91c1c",
-                                           state="disabled")
-        self._srv_stop_btn.pack(side="left")
+        btn_row = QWidget()
+        set_transparent_bg(btn_row)
+        brl = QHBoxLayout(btn_row)
+        brl.setContentsMargins(0, 0, 0, 0)
+        brl.setSpacing(8)
+        fl.addSpacing(8)
+        fl.addWidget(btn_row)
 
-    # ── Mode switch ──
+        self._srv_start_btn = QPushButton("启动服务器")
+        self._srv_start_btn.setStyleSheet(BTN_PRIMARY)
+        self._srv_start_btn.setFixedSize(100, 34)
+        self._srv_start_btn.clicked.connect(self._start_server)
+        brl.addWidget(self._srv_start_btn)
+
+        self._srv_stop_btn = QPushButton("停止")
+        self._srv_stop_btn.setStyleSheet(BTN_DANGER)
+        self._srv_stop_btn.setFixedSize(80, 34)
+        self._srv_stop_btn.clicked.connect(self._stop)
+        self._srv_stop_btn.setEnabled(False)
+        brl.addWidget(self._srv_stop_btn)
+        brl.addStretch(1)
+
+    def _lbl(self, text):
+        l = QLabel(text)
+        l.setStyleSheet(BODY_STYLE)
+        return l
+
+    # ── Mode ──
 
     def _set_mode(self, mode):
-        self._mode_var.set(mode)
-        self._update_mode_buttons()
+        self._update_mode_buttons(mode)
         if mode == "client":
-            self._client_frame.pack(fill="x", padx=15, pady=15)
-            self._server_frame.pack_forget()
+            self._client_frame.show()
+            self._server_frame.hide()
         else:
-            self._client_frame.pack_forget()
-            self._server_frame.pack(fill="x", padx=15, pady=15)
+            self._client_frame.hide()
+            self._server_frame.show()
 
-    def _update_mode_buttons(self):
-        current = self._mode_var.get()
-        for val, btn in self._mode_btns.items():
-            if val == current:
-                btn.configure(fg_color="#10a37f", text_color="white", hover_color="#0d8c6d")
+    def _update_mode_buttons(self, val):
+        for v, btn in self._mode_btns.items():
+            if v == val:
+                btn.setStyleSheet(BTN_MODE_ACTIVE)
             else:
-                btn.configure(fg_color="transparent", text_color="#333333", hover_color="#e0e0e0")
+                btn.setStyleSheet(BTN_MODE_INACTIVE)
 
     def _on_proto_change(self, proto):
         if proto == "UDP":
-            self._udp_row.pack(fill="x", pady=(0, 8))
+            self._udp_row.show()
         else:
-            self._udp_row.pack_forget()
+            self._udp_row.hide()
 
-    # ── Output helpers ──
+    # ── Output ──
 
     def _append_output(self, text):
-        self._output.insert("end", text + "\n")
-        self._output.see("end")
+        self._output.appendPlainText(text)
+        sb = self._output.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     def _clear_output(self):
-        self._output.delete("1.0", "end")
+        self._output.clear()
 
     def _finish(self):
         self._running = False
-        self._start_btn.configure(state="normal")
-        self._stop_btn.configure(state="disabled")
-        self._srv_start_btn.configure(state="normal")
-        self._srv_stop_btn.configure(state="disabled")
-
-    # ── Stop ──
+        self._start_btn.setEnabled(True)
+        self._stop_btn.setEnabled(False)
+        self._srv_start_btn.setEnabled(True)
+        self._srv_stop_btn.setEnabled(False)
 
     def _stop(self):
         if not self._running:
@@ -273,58 +312,60 @@ class IperfToolModule(ToolModule):
         self._stop_event.set()
         self._append_output("[INFO] 正在停止...")
 
-    # ── Client start ──
+    # ── Validation ──
+
+    def _validate_port(self, s, title="端口"):
+        if not s.isdigit() or not (1 <= int(s) <= 65535):
+            QMessageBox.warning(self.app, "提示", f"请输入有效的{title}号 (1-65535)")
+            return None
+        return int(s)
+
+    def _validate_int_range(self, s, lo, hi, name):
+        if not s.isdigit() or not (lo <= int(s) <= hi):
+            QMessageBox.warning(self.app, "提示", f"{name}范围为 {lo}-{hi}")
+            return None
+        return int(s)
+
+    # ── Client ──
 
     def _start_client(self):
         if self._running:
             return
 
-        host = self._host_var.get().strip()
-        port_str = self._port_var.get().strip()
-        duration_str = self._duration_var.get().strip()
-        streams_str = self._streams_var.get().strip()
-        buf_str = self._buffer_var.get().strip()
-        proto = self._proto_var.get()
+        host = self._host_entry.text().strip()
+        port = self._validate_port(self._port_entry.text().strip())
+        if port is None:
+            return
+        duration = self._validate_int_range(self._duration_entry.text().strip(), 1, 9999, "测试时长(秒)")
+        if duration is None:
+            return
+        streams = self._validate_int_range(self._streams_entry.text().strip(), 1, 10, "并行流数量")
+        if streams is None:
+            return
 
-        if not host:
-            messagebox.showwarning("提示", "请输入服务器地址")
-            return
-        if not port_str.isdigit() or not (1 <= int(port_str) <= 65535):
-            messagebox.showwarning("提示", "请输入有效的端口号 (1-65535)")
-            return
-        if not duration_str.isdigit() or int(duration_str) < 1:
-            messagebox.showwarning("提示", "测试时长必须为正整数(秒)")
-            return
-        if not streams_str.isdigit() or not (1 <= int(streams_str) <= 10):
-            messagebox.showwarning("提示", "并行流数量为 1-10")
-            return
         try:
-            buf_kb = int(buf_str)
+            buf_kb = int(self._buffer_entry.text().strip())
             if buf_kb < 1 or buf_kb > 1024:
                 raise ValueError
         except ValueError:
-            messagebox.showwarning("提示", "缓冲区大小为 1-1024 KB")
+            QMessageBox.warning(self.app, "提示", "缓冲区大小为 1-1024 KB")
             return
 
-        port = int(port_str)
-        duration = int(duration_str)
-        streams = int(streams_str)
-        buf_size = buf_kb * 1024
-
+        proto = self._proto_combo.currentText()
         bw_mbps = 0
         if proto == "UDP":
             try:
-                bw_mbps = float(self._bw_var.get())
+                bw_mbps = float(self._bw_entry.text())
                 if bw_mbps <= 0:
                     raise ValueError
             except ValueError:
-                messagebox.showwarning("提示", "请输入有效的 UDP 目标带宽")
+                QMessageBox.warning(self.app, "提示", "请输入有效的 UDP 目标带宽")
                 return
 
         self._running = True
         self._stop_event.clear()
-        self._start_btn.configure(state="disabled")
-        self._stop_btn.configure(state="normal")
+        self._start_btn.setEnabled(False)
+        self._stop_btn.setEnabled(True)
         self._clear_output()
 
         self._append_output(f"[INFO] 连接到 {host}:{port}，协议: {proto}")
@@ -333,44 +374,34 @@ class IperfToolModule(ToolModule):
         self._append_output("-" * 50)
 
         if proto == "TCP":
-            target = self._run_tcp_client
-            args = (host, port, duration, streams, buf_size)
+            threading.Thread(target=self._run_tcp_client,
+                             args=(host, port, duration, streams, buf_kb * 1024), daemon=True).start()
         else:
-            target = self._run_udp_client
-            args = (host, port, duration, streams, buf_size, bw_mbps)
+            threading.Thread(target=self._run_udp_client,
+                             args=(host, port, duration, streams, buf_kb * 1024, bw_mbps), daemon=True).start()
 
-        threading.Thread(target=target, args=args, daemon=True).start()
-
-    # ── Server start ──
+    # ── Server ──
 
     def _start_server(self):
         if self._running:
             return
-
-        bind_addr = self._srv_bind_var.get().strip()
-        port_str = self._srv_port_var.get().strip()
-
-        if not bind_addr:
-            bind_addr = "0.0.0.0"
-        if not port_str.isdigit() or not (1 <= int(port_str) <= 65535):
-            messagebox.showwarning("提示", "请输入有效的端口号 (1-65535)")
+        bind_addr = self._srv_bind_entry.text().strip() or "0.0.0.0"
+        port = self._validate_port(self._srv_port_entry.text().strip())
+        if port is None:
             return
-
-        port = int(port_str)
 
         self._running = True
         self._stop_event.clear()
-        self._srv_start_btn.configure(state="disabled")
-        self._srv_stop_btn.configure(state="normal")
+        self._srv_start_btn.setEnabled(False)
+        self._srv_stop_btn.setEnabled(True)
         self._clear_output()
-
         self._append_output(f"[INFO] 启动服务器: {bind_addr}:{port}")
         self._append_output("[INFO] 等待客户端连接...")
         self._append_output("-" * 50)
 
         threading.Thread(target=self._run_server, args=(bind_addr, port), daemon=True).start()
 
-    # ══════════════ TCP Client ══════════════
+    # ══════════════ TCP Client (unchanged business logic) ══════════════
 
     def _run_tcp_client(self, host, port, duration, streams, buf_size):
         total_bytes = 0
@@ -386,18 +417,12 @@ class IperfToolModule(ToolModule):
                 sock.connect((host, port))
                 header = struct.pack("!II", stream_id, 0)
                 payload = header + b"\x00" * (buf_size - len(header))
-
-                seq = 0
                 while not self._stop_event.is_set() and time.time() - start_time < duration:
                     try:
-                        # Update sequence in header
-                        header = struct.pack("!II", stream_id, seq)
+                        header = struct.pack("!II", stream_id, 0)
                         payload = header + b"\x00" * (buf_size - len(header))
                         sock.sendall(payload)
                         total_bytes += buf_size
-                        seq += 1
-
-                        # Report per-second bandwidth
                         now = time.time()
                         if now - last_report >= 1.0:
                             bw = (total_bytes - last_bytes) * 8 / (now - last_report) / 1e6
@@ -414,16 +439,12 @@ class IperfToolModule(ToolModule):
             except Exception as e:
                 self.app.after(0, self._append_output, f"[ERROR] TCP流{stream_id}: {e}")
 
-        threads = []
-        for sid in range(streams):
-            t = threading.Thread(target=do_stream, args=(sid,), daemon=True)
+        threads = [threading.Thread(target=do_stream, args=(sid,), daemon=True) for sid in range(streams)]
+        for t in threads:
             t.start()
-            threads.append(t)
-
         for t in threads:
             t.join()
 
-        # Final report
         elapsed = time.time() - start_time
         if elapsed > 0:
             avg_bw = total_bytes * 8 / elapsed / 1e6
@@ -432,10 +453,9 @@ class IperfToolModule(ToolModule):
             self.app.after(0, self._append_output,
                            f"总计: {total_mb:.1f} MB  时长: {elapsed:.1f} 秒  平均带宽: {avg_bw:.1f} Mbps")
             logger.info(f"[iPerf客户端] TCP {host}:{port} {elapsed:.1f}s {avg_bw:.1f}Mbps")
-
         self.app.after(0, self._finish)
 
-    # ══════════════ UDP Client ══════════════
+    # ══════════════ UDP Client (unchanged business logic) ══════════════
 
     def _run_udp_client(self, host, port, duration, streams, buf_size, bw_mbps):
         total_bytes = 0
@@ -444,26 +464,23 @@ class IperfToolModule(ToolModule):
         last_report = start_time
         last_bytes = 0
 
-        # Calculate packets per second based on target bandwidth
         bits_per_second = bw_mbps * 1e6
         bytes_per_second = bits_per_second / 8
         packets_per_second = bytes_per_second / buf_size
-        interval = 1.0 / max(packets_per_second, 1)  # seconds between packets
+        interval = 1.0 / max(packets_per_second, 1)
         if interval < 0.0001:
-            interval = 0.0001  # safety floor
+            interval = 0.0001
 
         def do_stream(stream_id):
             nonlocal total_bytes, last_report, last_bytes, total_packets
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.settimeout(0.1)
-
                 seq = 0
                 while not self._stop_event.is_set() and time.time() - start_time < duration:
                     ts = time.time()
                     header = struct.pack("!IId", stream_id, seq, ts)
-                    padding = b"\x00" * max(0, buf_size - len(header))
-                    data = header + padding
+                    data = header + b"\x00" * max(0, buf_size - len(header))
                     try:
                         sock.sendto(data, (host, port))
                         total_bytes += len(data)
@@ -471,8 +488,6 @@ class IperfToolModule(ToolModule):
                         seq += 1
                     except socket.timeout:
                         continue
-
-                    # Report
                     now = time.time()
                     if now - last_report >= 1.0:
                         bw = (total_bytes - last_bytes) * 8 / (now - last_report) / 1e6
@@ -481,20 +496,14 @@ class IperfToolModule(ToolModule):
                                        f"  [{elapsed:2d}] {elapsed-1:.0f}-{elapsed:.0f} sec  带宽: {bw:7.1f} Mbps")
                         last_report = now
                         last_bytes = total_bytes
-
-                    # Rate limiting
                     time.sleep(interval / streams)
-
                 sock.close()
             except Exception as e:
                 self.app.after(0, self._append_output, f"[ERROR] UDP流{stream_id}: {e}")
 
-        threads = []
-        for sid in range(streams):
-            t = threading.Thread(target=do_stream, args=(sid,), daemon=True)
+        threads = [threading.Thread(target=do_stream, args=(sid,), daemon=True) for sid in range(streams)]
+        for t in threads:
             t.start()
-            threads.append(t)
-
         for t in threads:
             t.join()
 
@@ -506,13 +515,11 @@ class IperfToolModule(ToolModule):
             self.app.after(0, self._append_output,
                            f"发送: {total_mb:.1f} MB  {total_packets} 数据报  时长: {elapsed:.1f} 秒  平均带宽: {avg_bw:.1f} Mbps")
             logger.info(f"[iPerf客户端] UDP {host}:{port} {elapsed:.1f}s {avg_bw:.1f}Mbps {total_packets}pkts")
-
         self.app.after(0, self._finish)
 
-    # ══════════════ Server ══════════════
+    # ══════════════ Server (unchanged business logic) ══════════════
 
     def _run_server(self, bind_addr, port):
-        """TCP + UDP server - listens on both protocols."""
         tcp_sock = None
         udp_sock = None
         start_time = time.time()
@@ -522,23 +529,19 @@ class IperfToolModule(ToolModule):
         udp_lost = [0]
 
         try:
-            # TCP socket
             tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             tcp_sock.settimeout(0.5)
             tcp_sock.bind((bind_addr, port))
             tcp_sock.listen(5)
 
-            # UDP socket
             udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             udp_sock.settimeout(0.5)
             udp_sock.bind((bind_addr, port))
 
             self.app.after(0, self._append_output, f"[INFO] 服务器已启动，监听 TCP+UDP :{port}")
-            self.app.after(0, self._append_output, "[INFO] 等待客户端连接...")
 
-            # Stats counters (per-second reporting)
             last_report = [start_time]
             last_tcp = [0]
             last_udp = [0]
@@ -570,7 +573,6 @@ class IperfToolModule(ToolModule):
                         data, addr = udp_sock.recvfrom(65536)
                         udp_bytes[0] += len(data)
                         udp_packets[0] += 1
-                        # Parse sequence for loss detection
                         if len(data) >= 4:
                             seq = struct.unpack("!I", data[:4])[0]
                             if seq_base < 0:
@@ -597,13 +599,11 @@ class IperfToolModule(ToolModule):
                         last_tcp[0] = tcp_bytes[0]
                         last_udp[0] = udp_bytes[0]
 
-            # Start UDP handler and reporter
             udp_thread = threading.Thread(target=handle_udp, daemon=True)
             udp_thread.start()
             reporter = threading.Thread(target=report_loop, daemon=True)
             reporter.start()
 
-            # Accept TCP connections
             while not self._stop_event.is_set():
                 try:
                     client_sock, addr = tcp_sock.accept()

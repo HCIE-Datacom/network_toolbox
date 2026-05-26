@@ -16,15 +16,21 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-"""MAC address vendor lookup using IEEE OUI database."""
+"""MAC address vendor lookup using IEEE OUI database (PySide6 edition)."""
 
 import json
 import os
 import re
-import tkinter as tk
-import customtkinter as ctk
+
+from PySide6.QtWidgets import (
+    QWidget, QFrame, QVBoxLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QPlainTextEdit,
+)
+from PySide6.QtCore import Qt
 
 from core.base_module import ToolModule
+from core.app import BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, set_card_style, set_transparent_bg, set_dark_output
+from core.app import H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE
 from core.logger import logger
 
 
@@ -48,18 +54,12 @@ def _normalize_mac(mac: str):
 
     Returns (oui_hex, full_hex) or (None, None) on failure.
     """
-    # Strip whitespace
     s = mac.strip()
-    # Remove all delimiters
     cleaned = re.sub(r'[:\-.]', '', s).upper()
-
-    # Must be hexadecimal
     if not re.fullmatch(r'[0-9A-F]{6,12}', cleaned):
         return None, None
-
     if len(cleaned) < 6:
         return None, None
-
     oui = cleaned[:6]
     full = cleaned[:12] if len(cleaned) >= 12 else cleaned
     return oui, full
@@ -78,122 +78,133 @@ class MACLookupModule(ToolModule):
     icon = "\U0001f4cd"  # 📍
     description = "基于 IEEE OUI 数据库查询 MAC 地址厂商信息，支持多种 MAC 格式输入。"
 
-    def build(self, parent):
-        """Build the UI into the given parent CTkFrame."""
-
-        def label(master, text, font=("Helvetica", -13), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="#f9f9f9", highlightthickness=0, bd=0, **kw)
-
-        def white_label(master, text, font=("Helvetica", -13), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="white", highlightthickness=0, bd=0, **kw)
+    def build(self, parent: QWidget):
+        """Build the UI into the given parent QWidget."""
+        # Ensure parent has a layout
+        if parent.layout() is None:
+            parent.setLayout(QVBoxLayout(parent))
+        layout = parent.layout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # Load database
         self._oui_db = _load_oui()
         logger.info(f"[MAC查询] 加载 OUI 数据库: {len(self._oui_db)} 条记录")
 
         # ── Title + Description ──
-        label(parent, text=self.name,
-              font=("Helvetica", -22, "bold"), fg="#1f1f1f").pack(anchor="w", pady=(0, 5))
-        label(parent, text=self.description,
-              font=("Helvetica", -13), fg="#6b6b6b",
-              wraplength=620, justify="left").pack(anchor="w", pady=(0, 15))
+        title = QLabel(self.name)
+        title.setStyleSheet(H1_STYLE)
+        layout.addWidget(title)
+        layout.addSpacing(5)
+
+        desc = QLabel(self.description)
+        desc.setStyleSheet(DESC_STYLE)
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        layout.addSpacing(15)
 
         # ── Input Card ──
-        inp_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                border_width=1, border_color="#e5e5e5")
-        inp_card.pack(fill="x", pady=(0, 15))
-        inp_inner = ctk.CTkFrame(inp_card, fg_color="transparent")
-        inp_inner.pack(fill="x", padx=15, pady=15)
+        inp_card = QFrame()
+        set_card_style(inp_card)
+        inp_card_layout = QVBoxLayout(inp_card)
+        inp_card_layout.setContentsMargins(15, 12, 15, 12)
+        inp_card_layout.setSpacing(6)
 
-        white_label(inp_inner, text="MAC 地址",
-                    font=("Helvetica", -12, "bold"), fg="#333333").pack(anchor="w", pady=(0, 8))
+        lb = QLabel("MAC 地址")
+        lb.setStyleSheet(BODY_STYLE)
+        inp_card_layout.addWidget(lb)
 
-        entry_row = ctk.CTkFrame(inp_inner, fg_color="transparent")
-        entry_row.pack(fill="x")
+        entry_row = QWidget()
+        set_transparent_bg(entry_row)
+        er_layout = QHBoxLayout(entry_row)
+        er_layout.setContentsMargins(0, 0, 0, 0)
+        er_layout.setSpacing(10)
 
-        self._mac_var = ctk.StringVar()
-        self._mac_entry = ctk.CTkEntry(entry_row, textvariable=self._mac_var,
-                                        placeholder_text="例如: 28:6F:B9:00:00:01 或 286FB9",
-                                        font=("Helvetica", 13), corner_radius=8,
-                                        height=42, border_color="#d1d5db", border_width=1)
-        self._mac_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self._mac_entry.bind("<Return>", lambda e: self._do_lookup())
+        self._mac_entry = QLineEdit()
+        self._mac_entry.setPlaceholderText("例如: 28:6F:B9:00:00:01 或 286FB9")
+        self._mac_entry.setMinimumHeight(40)
+        self._mac_entry.returnPressed.connect(self._do_lookup)
+        er_layout.addWidget(self._mac_entry, stretch=1)
 
-        self._lookup_btn = ctk.CTkButton(entry_row, text="查询", command=self._do_lookup,
-                                         width=80, height=42, font=("Helvetica", 13, "bold"),
-                                         corner_radius=8, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._lookup_btn.pack(side="right")
+        self._lookup_btn = QPushButton("查询")
+        self._lookup_btn.setStyleSheet(BTN_PRIMARY)
+        self._lookup_btn.setFixedSize(80, 40)
+        self._lookup_btn.clicked.connect(self._do_lookup)
+        er_layout.addWidget(self._lookup_btn)
 
-        # Format hint
-        hint_row = ctk.CTkFrame(inp_inner, fg_color="transparent")
-        hint_row.pack(fill="x", pady=(6, 0))
-        white_label(hint_row, text="支持格式: XX:XX:XX:XX:XX:XX  |  XX-XX-XX-XX-XX-XX  |  XXXX.XXXX.XXXX  |  纯十六进制",
-                    font=("Helvetica", -10), fg="#999999").pack(anchor="w")
+        inp_card_layout.addWidget(entry_row)
+
+        hint = QLabel("支持格式: XX:XX:XX:XX:XX:XX  |  XX-XX-XX-XX-XX-XX  |  XXXX.XXXX.XXXX  |  纯十六进制")
+        hint.setStyleSheet(HINT_STYLE)
+        inp_card_layout.addWidget(hint)
+
+        layout.addWidget(inp_card)
+        layout.addSpacing(15)
 
         # ── Result Card ──
-        result_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                   border_width=1, border_color="#e5e5e5")
-        result_card.pack(fill="x", pady=(0, 15))
-        result_inner = ctk.CTkFrame(result_card, fg_color="transparent")
-        result_inner.pack(fill="x", padx=15, pady=15)
+        result_card = QFrame()
+        set_card_style(result_card)
+        rc_layout = QVBoxLayout(result_card)
+        rc_layout.setContentsMargins(15, 12, 15, 12)
+        rc_layout.setSpacing(4)
 
-        white_label(result_inner, text="查询结果",
-                    font=("Helvetica", -14, "bold"), fg="#1f1f1f").pack(anchor="w", pady=(0, 12))
+        rh = QLabel("查询结果")
+        rh.setStyleSheet(H2_STYLE + " color: #1f1f1f;")
+        rc_layout.addWidget(rh)
+        rc_layout.addSpacing(8)
 
-        self._result_frame = ctk.CTkFrame(result_inner, fg_color="transparent")
-        self._result_frame.pack(fill="x")
+        self._result_oui_label = QLabel("")
+        self._result_oui_label.setStyleSheet(H3_STYLE + " color: #666666;")
+        rc_layout.addWidget(self._result_oui_label)
 
-        self._result_oui_label = white_label(self._result_frame, text="",
-                                              font=("Helvetica", -12), fg="#666666")
-        self._result_oui_label.pack(anchor="w")
-        self._result_name_label = white_label(self._result_frame, text="",
-                                              font=("Helvetica", -20, "bold"), fg="#10a37f")
-        self._result_name_label.pack(anchor="w", pady=(4, 0))
-        self._result_addr_label = white_label(self._result_frame, text="",
-                                              font=("Helvetica", -12), fg="#666666",
-                                              wraplength=600, justify="left")
-        self._result_addr_label.pack(anchor="w", pady=(4, 0))
-        self._result_full_label = white_label(self._result_frame, text="",
-                                              font=("Helvetica", -11), fg="#999999")
-        self._result_full_label.pack(anchor="w", pady=(8, 0))
+        self._result_name_label = QLabel("")
+        self._result_name_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #10a37f; background: transparent;")
+        rc_layout.addWidget(self._result_name_label)
 
-        # Show placeholder
+        self._result_addr_label = QLabel("")
+        self._result_addr_label.setStyleSheet(H3_STYLE + " color: #666666;")
+        self._result_addr_label.setWordWrap(True)
+        rc_layout.addWidget(self._result_addr_label)
+
+        self._result_full_label = QLabel("")
+        self._result_full_label.setStyleSheet(HINT_STYLE + " color: #999999;")
+        rc_layout.addWidget(self._result_full_label)
+
+        layout.addWidget(result_card)
+        layout.addSpacing(15)
+
+        # Placeholder
         self._show_placeholder()
 
-        # ── Recent History Card ──
-        hist_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                  border_width=1, border_color="#e5e5e5")
-        hist_card.pack(fill="both", expand=True)
-        hist_inner = ctk.CTkFrame(hist_card, fg_color="transparent")
-        hist_inner.pack(fill="both", expand=True, padx=15, pady=15)
+        # ── History Card ──
+        hist_card = QFrame()
+        set_card_style(hist_card)
+        hc_layout = QVBoxLayout(hist_card)
+        hc_layout.setContentsMargins(15, 12, 15, 12)
+        hc_layout.setSpacing(8)
 
-        hist_header = ctk.CTkFrame(hist_inner, fg_color="transparent")
-        hist_header.pack(fill="x", pady=(0, 8))
-        white_label(hist_header, text="查询历史",
-                    font=("Helvetica", -14, "bold"), fg="#1f1f1f").pack(side="left")
+        hh = QLabel("查询历史")
+        hh.setStyleSheet(H2_STYLE + " color: #1f1f1f;")
+        hc_layout.addWidget(hh)
 
-        self._history_list = ctk.CTkTextbox(hist_inner, font=("Courier", 12),
-                                            corner_radius=8, fg_color="#f9f9f9",
-                                            text_color="#333333", border_width=1,
-                                            border_color="#e5e5e5")
-        self._history_list.pack(fill="both", expand=True)
-        self._history_list.configure(state="disabled")
+        self._history_list = QPlainTextEdit()
+        self._history_list.setReadOnly(True)
+        set_dark_output(self._history_list)
+        hc_layout.addWidget(self._history_list, stretch=1)
 
-        self._history = []  # list of (mac, oui, name)
+        layout.addWidget(hist_card, stretch=1)
+
+        self._history = []
 
     def _show_placeholder(self):
-        """Show default placeholder in result area."""
-        self._result_oui_label.configure(text="")
-        self._result_name_label.configure(text="输入 MAC 地址并点击查询", fg="#999999",
-                                          font=("Helvetica", -13))
-        self._result_addr_label.configure(text="")
-        self._result_full_label.configure(text="")
+        self._result_oui_label.setText("")
+        self._result_name_label.setText("输入 MAC 地址并点击查询")
+        self._result_name_label.setStyleSheet(BODY_STYLE + " color: #999999;")
+        self._result_addr_label.setText("")
+        self._result_full_label.setText("")
 
     def _do_lookup(self):
-        """Perform MAC address lookup."""
-        mac_str = self._mac_var.get().strip()
+        mac_str = self._mac_entry.text().strip()
         if not mac_str:
             self._show_placeholder()
             return
@@ -201,48 +212,44 @@ class MACLookupModule(ToolModule):
         oui, full = _normalize_mac(mac_str)
         if oui is None:
             self._show_placeholder()
-            self._result_name_label.configure(text="无效的 MAC 地址格式", fg="#dc2626",
-                                              font=("Helvetica", -13))
+            self._result_name_label.setText("无效的 MAC 地址格式")
+            self._result_name_label.setStyleSheet(BODY_STYLE + " color: #dc2626; font-weight: bold;")
             return
 
-        # Format display
         oui_display = _format_mac(oui + "000000")[:8] + "..."
         full_display = _format_mac(full) if len(full) == 12 else oui_display
 
         info = self._oui_db.get(oui)
         if info:
-            self._result_oui_label.configure(text=f"OUI: {oui_display}")
-            self._result_name_label.configure(text=info["name"], fg="#10a37f",
-                                              font=("Helvetica", -20, "bold"))
+            self._result_oui_label.setText(f"OUI: {oui_display}")
+            self._result_name_label.setText(info["name"])
+            self._result_name_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #10a37f; background: transparent;")
             addr = info.get("addr", "").replace("\n", "  |  ")
-            self._result_addr_label.configure(text=addr if addr else "")
-            self._result_full_label.configure(text=f"完整 MAC: {full_display}")
+            self._result_addr_label.setText(addr if addr else "")
+            self._result_full_label.setText(f"完整 MAC: {full_display}")
             logger.info(f"[MAC查询] {mac_str} -> {oui} -> {info['name']}")
+            name = info["name"]
         else:
-            self._result_oui_label.configure(text=f"OUI: {oui_display}")
-            self._result_name_label.configure(text="未找到匹配的厂商", fg="#f59e0b",
-                                              font=("Helvetica", -16))
-            self._result_addr_label.configure(text="")
-            self._result_full_label.configure(text=f"完整 MAC: {full_display}")
+            self._result_oui_label.setText(f"OUI: {oui_display}")
+            self._result_name_label.setText("未找到匹配的厂商")
+            self._result_name_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #f59e0b; background: transparent;")
+            self._result_addr_label.setText("")
+            self._result_full_label.setText(f"完整 MAC: {full_display}")
             logger.info(f"[MAC查询] {mac_str} -> {oui} -> 未找到")
+            name = "未找到匹配的厂商"
 
         # Add to history
-        entry = (full_display, oui, self._result_name_label.cget("text"))
-        if info:
-            entry = (full_display, oui, info["name"])
+        entry = (full_display, oui, name)
         self._history.insert(0, entry)
         if len(self._history) > 50:
             self._history = self._history[:50]
         self._update_history()
 
     def _update_history(self):
-        """Refresh history list."""
-        self._history_list.configure(state="normal")
-        self._history_list.delete("1.0", "end")
-
+        self._history_list.setReadOnly(False)
+        self._history_list.clear()
         for full_mac, oui, name in self._history:
             oui_display = _format_mac(oui)
-            line = f"{oui_display:<18} {name:<30} ({full_mac})\n"
-            self._history_list.insert("end", line)
-
-        self._history_list.configure(state="disabled")
+            line = f"{oui_display:<18} {name:<30} ({full_mac})"
+            self._history_list.appendPlainText(line)
+        self._history_list.setReadOnly(True)

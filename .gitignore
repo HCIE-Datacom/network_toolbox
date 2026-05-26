@@ -26,3 +26,4 @@ templates/templates_user.json
 dist/
 build/
 *.egg-info/
+.workbuddy/

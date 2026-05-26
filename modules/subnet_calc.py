@@ -16,168 +16,167 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-"""Subnet Calculator module - IP subnet division and route summarization."""
+"""Subnet Calculator module - IP subnet division and route summarization (PySide6 edition)."""
 
 import ipaddress
-import customtkinter as ctk
-import tkinter as tk
+
+from PySide6.QtWidgets import (
+    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QLineEdit, QPushButton, QPlainTextEdit,
+)
+from PySide6.QtCore import Qt
 
 from core.base_module import ToolModule
+from core.app import (
+    BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, BTN_MODE_ACTIVE, BTN_MODE_INACTIVE,
+    set_card_style, set_transparent_bg, set_dark_output,
+    H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE,
+)
 
 
 class SubnetCalcModule(ToolModule):
     name = "子网计算"
-    icon = "\U0001F310"  # 🌐
+    icon = "\U0001F310"
     description = "支持子网划分计算和地址汇总（路由聚合），快速获取网络地址、广播地址、可用主机范围等信息。"
 
-    def build(self, parent):
-        # ── helpers ──
-        def label(master, text, font=("Helvetica", -13), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="#f9f9f9", highlightthickness=0, bd=0, **kw)
-
-        def white_label(master, text, font=("Helvetica", -13), fg="#333333", **kw):
-            return tk.Label(master, text=text, font=font, fg=fg,
-                            bg="white", highlightthickness=0, bd=0, **kw)
+    def build(self, parent: QWidget):
+        if parent.layout() is None:
+            parent.setLayout(QVBoxLayout(parent))
+        layout = parent.layout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # ── Title ──
-        label(parent, text=self.name,
-              font=("Helvetica", -22, "bold"), fg="#1f1f1f").pack(anchor="w", pady=(0, 5))
-        label(parent, text=self.description,
-              font=("Helvetica", -13), fg="#6b6b6b",
-              wraplength=620, justify="left").pack(anchor="w", pady=(0, 15))
+        title = QLabel(self.name)
+        title.setStyleSheet(H1_STYLE)
+        layout.addWidget(title)
+        layout.addSpacing(5)
+
+        desc = QLabel(self.description)
+        desc.setStyleSheet(DESC_STYLE)
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        layout.addSpacing(15)
 
         # ── Input card ──
-        inp_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                border_width=1, border_color="#e5e5e5")
-        inp_card.pack(fill="x", pady=(0, 15))
-        inp_inner = ctk.CTkFrame(inp_card, fg_color="transparent")
-        inp_inner.pack(fill="x", padx=15, pady=15)
+        inp_card = QFrame()
+        set_card_style(inp_card)
+        ic_layout = QVBoxLayout(inp_card)
+        ic_layout.setContentsMargins(15, 12, 15, 12)
+        ic_layout.setSpacing(10)
 
         # Mode selector
-        mode_row = ctk.CTkFrame(inp_inner, fg_color="transparent")
-        mode_row.pack(fill="x", pady=(0, 12))
-        white_label(mode_row, text="计算模式",
-                    font=("Helvetica", -12, "bold"), fg="#333333").pack(anchor="w", pady=(0, 6))
-        self._mode_var = ctk.StringVar(value="subnet")
-        mode_btn_frame = ctk.CTkFrame(mode_row, fg_color="#f0f0f0", corner_radius=8)
-        mode_btn_frame.pack(fill="x")
+        mode_label = QLabel("计算模式")
+        mode_label.setStyleSheet(H2_STYLE)
+        ic_layout.addWidget(mode_label)
+
+        mode_btn_wrapper = QWidget()
+        mode_btn_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        mode_btn_wrapper.setStyleSheet("background: #f0f0f0; border-radius: 8px;")
+        mbl = QHBoxLayout(mode_btn_wrapper)
+        mbl.setContentsMargins(4, 4, 4, 4)
+        mbl.setSpacing(4)
+
         self._mode_btns = {}
-        for val, label_text in [("subnet", "子网划分"), ("summary", "地址汇总")]:
-            btn = ctk.CTkButton(mode_btn_frame, text=label_text, width=0, height=32,
-                                font=("Helvetica", 12), corner_radius=6,
-                                fg_color="transparent", text_color="#333333",
-                                hover_color="#e0e0e0",
-                                command=lambda v=val: self._set_mode(v))
-            btn.pack(side="left", expand=True, fill="x", padx=2, pady=2)
+        for val, text in [("subnet", "子网划分"), ("summary", "地址汇总")]:
+            btn = QPushButton(text)
+            btn.setFixedHeight(32)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked=False, v=val: self._set_mode(v))
+            mbl.addWidget(btn, stretch=1)
             self._mode_btns[val] = btn
-        self._update_mode_buttons()
+        ic_layout.addWidget(mode_btn_wrapper)
 
-        # ── Subnet mode inputs ──
-        self._subnet_frame = ctk.CTkFrame(inp_inner, fg_color="transparent")
-        self._subnet_frame.pack(fill="x")
+        self._update_mode_buttons(val="subnet")
 
-        ip_row = ctk.CTkFrame(self._subnet_frame, fg_color="transparent")
-        ip_row.pack(fill="x", pady=(0, 8))
-        ip_row.grid_columnconfigure(0, weight=3)
-        ip_row.grid_columnconfigure(1, weight=2)
+        # ── Subnet inputs ──
+        self._subnet_frame = QWidget()
+        set_transparent_bg(self._subnet_frame)
+        sfl = QVBoxLayout(self._subnet_frame)
+        sfl.setContentsMargins(0, 0, 0, 0)
+        sfl.setSpacing(8)
+        ic_layout.addWidget(self._subnet_frame)
 
-        white_label(ip_row, text="IP 地址",
-                    font=("Helvetica", -11), fg="#666666").grid(row=0, column=0, sticky="w")
-        self._ip_var = ctk.StringVar(value="")
-        self._ip_entry = ctk.CTkEntry(ip_row, textvariable=self._ip_var,
-                                      placeholder_text="例如: 192.168.1.100",
-                                      font=("Helvetica", 13), corner_radius=8,
-                                      height=40, border_color="#d1d5db", border_width=1)
-        self._ip_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8))
-        self._ip_entry.bind("<KeyRelease>", lambda e: self._calc_subnet())
+        ip_grid = QGridLayout()
+        ip_grid.setColumnStretch(0, 3)
+        ip_grid.setColumnStretch(1, 2)
+        ip_grid.setContentsMargins(0, 0, 0, 0)
+        sfl.addLayout(ip_grid)
 
-        white_label(ip_row, text="掩码 / CIDR",
-                    font=("Helvetica", -11), fg="#666666").grid(row=0, column=1, sticky="w")
-        self._mask_var = ctk.StringVar(value="24")
-        self._mask_entry = ctk.CTkEntry(ip_row, textvariable=self._mask_var,
-                                        placeholder_text="24 或 255.255.255.0",
-                                        font=("Helvetica", 13), corner_radius=8,
-                                        height=40, border_color="#d1d5db", border_width=1)
-        self._mask_entry.grid(row=1, column=1, sticky="ew")
-        self._mask_entry.bind("<KeyRelease>", lambda e: self._calc_subnet())
+        QLabel("IP 地址").setStyleSheet(HINT_STYLE)
+        ip_grid.addWidget(self._make_hint("IP 地址"), 0, 0)
 
-        # ── Summary mode inputs ──
-        self._summary_frame = ctk.CTkFrame(inp_inner, fg_color="transparent")
-        # (packed/unpacked dynamically)
+        self._ip_entry = QLineEdit()
+        self._ip_entry.setPlaceholderText("例如: 192.168.1.100")
+        self._ip_entry.setMinimumHeight(38)
+        self._ip_entry.textChanged.connect(lambda: self._calc_subnet())
+        ip_grid.addWidget(self._ip_entry, 1, 0)
+        ip_grid.setContentsMargins(0, 0, 8, 0)
 
-        white_label(self._summary_frame, text="输入网络地址（每行一个）",
-                    font=("Helvetica", -11), fg="#666666").pack(anchor="w", pady=(0, 4))
+        ip_grid.addWidget(self._make_hint("掩码 / CIDR"), 0, 1)
 
-        # Use tk.Text directly to avoid CTkTextbox input limitations
-        text_container = ctk.CTkFrame(self._summary_frame, corner_radius=8,
-                                      fg_color="#f9f9f9", border_color="#d1d5db",
-                                      border_width=1)
-        text_container.pack(fill="x")
-        text_inner = tk.Frame(text_container, bg="#f9f9f9", highlightthickness=0, bd=0)
-        text_inner.pack(fill="both", expand=True, padx=6, pady=6)
+        self._mask_entry = QLineEdit()
+        self._mask_entry.setPlaceholderText("24 或 255.255.255.0")
+        self._mask_entry.setText("24")
+        self._mask_entry.setMinimumHeight(38)
+        self._mask_entry.textChanged.connect(lambda: self._calc_subnet())
+        ip_grid.addWidget(self._mask_entry, 1, 1)
 
-        scrollbar = tk.Scrollbar(text_inner, orient="vertical", width=12,
-                                 troughcolor="#e8e8e8", bg="#c0c0c0",
-                                 activebackground="#a0a0a0", bd=0,
-                                 highlightthickness=0)
-        scrollbar.pack(side="right", fill="y")
+        # ── Summary inputs ──
+        self._summary_frame = QWidget()
+        set_transparent_bg(self._summary_frame)
+        sfl2 = QVBoxLayout(self._summary_frame)
+        sfl2.setContentsMargins(0, 0, 0, 0)
+        sfl2.setSpacing(6)
+        ic_layout.addWidget(self._summary_frame)
+        self._summary_frame.hide()
 
-        self._summary_text_tk = tk.Text(text_inner, font=("Courier", 11),
-                                        fg="#333333", bg="#f9f9f9",
-                                        insertbackground="#333333",
-                                        selectbackground="#b3d9ff",
-                                        relief="flat", bd=0,
-                                        wrap="word", height=6,
-                                        highlightthickness=0, spacing3=4,
-                                        yscrollcommand=scrollbar.set)
-        self._summary_text_tk.pack(fill="both", expand=True, side="left")
-        scrollbar.config(command=self._summary_text_tk.yview)
+        sfl2.addWidget(self._make_hint("输入网络地址（每行一个）"))
 
-        # Force tk.Text to handle Return key properly on macOS.
-        # macOS CTk apps sometimes route Return to the default button instead of the text widget.
-        # We use 'bind' at the widget level and explicitly call tk::TextInsert via tcl.
-        text_widget_path = str(self._summary_text_tk)
-        def _on_return(event):
-            try:
-                self._summary_text_tk.tk.call("tk::TextInsert", self._summary_text_tk, "\n")
-            except tk.TclError:
-                self._summary_text_tk.insert("insert", "\n")
-            if self._summary_text_tk.cget("autoseparators"):
-                self._summary_text_tk.tk.call(self._summary_text_tk, "edit", "separator")
-            return "break"
+        self._summary_input = QPlainTextEdit()
+        self._summary_input.setStyleSheet("""
+            QPlainTextEdit {
+                border: 1px solid #d1d5db; border-radius: 8px;
+                background: #f9f9f9; color: #333333;
+                font-family: "Courier", monospace; font-size: 11px;
+                padding: 6px;
+            }
+        """)
+        self._summary_input.setFixedHeight(120)
+        self._summary_input.setPlainText("192.168.1.0/24\n192.168.2.0/24\n192.168.3.0/24")
+        sfl2.addWidget(self._summary_input)
 
-        # Bind without 'add' to replace any existing binding at widget level
-        self._summary_text_tk.bind("<Return>", _on_return)
-        self._summary_text_tk.bind("<KP_Enter>", _on_return)
+        btn_row = QWidget()
+        set_transparent_bg(btn_row)
+        brl = QHBoxLayout(btn_row)
+        brl.setContentsMargins(0, 0, 0, 0)
+        self._summary_calc_btn = QPushButton("计算汇总")
+        self._summary_calc_btn.setStyleSheet(BTN_PRIMARY)
+        self._summary_calc_btn.setFixedSize(100, 34)
+        self._summary_calc_btn.clicked.connect(self._calc_summary)
+        brl.addWidget(self._summary_calc_btn)
+        brl.addStretch(1)
+        sfl2.addWidget(btn_row)
 
-        # Insert default example text
-        self._summary_text_tk.insert("1.0", "192.168.1.0/24\n192.168.2.0/24\n192.168.3.0/24")
-
-        summary_btn_row = ctk.CTkFrame(self._summary_frame, fg_color="transparent")
-        summary_btn_row.pack(fill="x", pady=(8, 0))
-        self._summary_calc_btn = ctk.CTkButton(summary_btn_row, text="计算汇总",
-                                                command=self._calc_summary,
-                                                width=100, height=34,
-                                                font=("Helvetica", 12, "bold"),
-                                                corner_radius=8, fg_color="#10a37f",
-                                                hover_color="#0d8c6d")
-        self._summary_calc_btn.pack(side="left")
+        layout.addWidget(inp_card)
+        layout.addSpacing(15)
 
         # ── Result card ──
-        result_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                   border_width=1, border_color="#e5e5e5")
-        result_card.pack(fill="both", expand=True)
+        result_card = QFrame()
+        set_card_style(result_card)
+        rc_layout = QVBoxLayout(result_card)
+        rc_layout.setContentsMargins(15, 12, 15, 12)
+        rc_layout.setSpacing(0)
 
-        self._result_inner = ctk.CTkFrame(result_card, fg_color="transparent")
-        self._result_inner.pack(fill="both", expand=True, padx=15, pady=15)
+        # Subnet result
+        self._subnet_result = QWidget()
+        set_transparent_bg(self._subnet_result)
+        sr_layout = QVBoxLayout(self._subnet_result)
+        sr_layout.setContentsMargins(0, 0, 0, 0)
+        sr_layout.setSpacing(2)
+        rc_layout.addWidget(self._subnet_result, stretch=1)
 
-        # Subnet result area
-        self._subnet_result = ctk.CTkFrame(self._result_inner, fg_color="transparent")
-        self._subnet_result.pack(fill="both", expand=True)
-
-        # Results grid for subnet mode
-        self._result_items = []
+        self._result_labels = {}
         result_data = [
             ("CIDR 表示", "cidr"),
             ("网络地址", "network"),
@@ -191,107 +190,108 @@ class SubnetCalcModule(ToolModule):
             ("是否私有地址", "is_private"),
             ("通配符掩码", "wildcard"),
         ]
-
         for i, (lbl, key) in enumerate(result_data):
-            row_frame = ctk.CTkFrame(self._subnet_result, fg_color="transparent")
-            row_frame.pack(fill="x", pady=2)
-            row_frame.grid_columnconfigure(1, weight=1)
+            row = QWidget()
+            set_transparent_bg(row)
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(0, 2, 0, 2)
 
-            # Alternating row background
-            bg = "#f9f9f9" if i % 2 == 0 else "white"
+            l = QLabel(lbl)
+            l.setStyleSheet(H3_STYLE)
+            l.setFixedWidth(120)
+            rl.addWidget(l)
 
-            tk.Label(row_frame, text=lbl, font=("Helvetica", -12, "bold"),
-                     fg="#555555", bg=bg, width=14, anchor="w",
-                     highlightthickness=0, bd=0).grid(row=0, column=0, sticky="w", padx=(0, 10))
+            v = QLabel("-")
+            v.setStyleSheet(BODY_STYLE)
+            rl.addWidget(v, stretch=1)
 
-            val_label = tk.Label(row_frame, text="-", font=("Helvetica", -12),
-                                 fg="#1f1f1f", bg=bg, anchor="w",
-                                 highlightthickness=0, bd=0)
-            val_label.grid(row=0, column=1, sticky="w")
+            sr_layout.addWidget(row)
+            self._result_labels[key] = v
 
-            self._result_items.append((key, val_label))
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.NoFrame)
+        sep.setLineWidth(0)
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: #e5e5e5; border: none;")
+        sr_layout.addWidget(sep)
+        sr_layout.addSpacing(8)
 
-        # Binary visualization
-        sep = ctk.CTkFrame(self._subnet_result, fg_color="#e5e5e5", height=1)
-        sep.pack(fill="x", pady=(12, 8))
+        viz_title = QLabel("地址二进制视图")
+        viz_title.setStyleSheet(H3_STYLE)
+        sr_layout.addWidget(viz_title)
+        sr_layout.addSpacing(6)
 
-        viz_label = tk.Label(self._subnet_result, text="地址二进制视图",
-                             font=("Helvetica", -12, "bold"), fg="#555555",
-                             bg="white", highlightthickness=0, bd=0)
-        viz_label.pack(anchor="w", pady=(0, 6))
+        self._binary_viz = QPlainTextEdit()
+        self._binary_viz.setReadOnly(True)
+        set_dark_output(self._binary_viz)
+        self._binary_viz.setPlainText("输入 IP 地址和掩码后自动显示...")
+        sr_layout.addWidget(self._binary_viz, stretch=1)
 
-        self._binary_viz = ctk.CTkTextbox(self._subnet_result,
-                                          font=("Courier", 12), corner_radius=8,
-                                          fg_color="#1e1e1e",
-                                          text_color="#e0e0e0",
-                                          border_width=1, border_color="#e5e5e5",
-                                          spacing3=14,
-                                          activate_scrollbars=True)
-        self._binary_viz.pack(fill="both", expand=True)
-        self._binary_viz.insert("1.0", "输入 IP 地址和掩码后自动显示...")
+        # Summary result
+        self._summary_result = QWidget()
+        set_transparent_bg(self._summary_result)
+        smr_layout = QVBoxLayout(self._summary_result)
+        smr_layout.setContentsMargins(0, 0, 0, 0)
+        rc_layout.addWidget(self._summary_result, stretch=1)
+        self._summary_result.hide()
 
-        # Summary result area
-        self._summary_result = ctk.CTkFrame(self._result_inner, fg_color="transparent")
+        sh = QLabel("地址汇总结果")
+        sh.setStyleSheet(H3_STYLE)
+        smr_layout.addWidget(sh)
+        smr_layout.addSpacing(8)
 
-        tk.Label(self._summary_result, text="地址汇总结果",
-                 font=("Helvetica", -12, "bold"), fg="#555555",
-                 bg="white", highlightthickness=0, bd=0).pack(anchor="w", pady=(0, 8))
+        self._summary_output = QPlainTextEdit()
+        self._summary_output.setReadOnly(True)
+        set_dark_output(self._summary_output)
+        smr_layout.addWidget(self._summary_output, stretch=1)
 
-        self._summary_output = ctk.CTkTextbox(self._summary_result,
-                                              font=("Courier", 12), corner_radius=8,
-                                              fg_color="#1e1e1e",
-                                              text_color="#e0e0e0",
-                                              border_width=1, border_color="#e5e5e5",
-                                              spacing3=14,
-                                              activate_scrollbars=True)
-        self._summary_output.pack(fill="both", expand=True)
+        layout.addWidget(result_card, stretch=1)
 
-        # Start in subnet mode
-        self._set_mode("subnet")
+    def _make_hint(self, text):
+        l = QLabel(text)
+        l.setStyleSheet(HINT_STYLE)
+        return l
 
     # ── Mode switching ──
 
     def _set_mode(self, mode):
-        self._mode_var.set(mode)
-        self._update_mode_buttons()
+        self._update_mode_buttons(mode)
         if mode == "subnet":
-            self._subnet_frame.pack(fill="x")
-            self._summary_frame.pack_forget()
-            self._subnet_result.pack(fill="both", expand=True)
-            self._summary_result.pack_forget()
+            self._subnet_frame.show()
+            self._summary_frame.hide()
+            self._subnet_result.show()
+            self._summary_result.hide()
         else:
-            self._subnet_frame.pack_forget()
-            self._summary_frame.pack(fill="x")
-            self._subnet_result.pack_forget()
-            self._summary_result.pack(fill="both", expand=True)
+            self._subnet_frame.hide()
+            self._summary_frame.show()
+            self._subnet_result.hide()
+            self._summary_result.show()
             self._calc_summary()
 
-    def _update_mode_buttons(self):
-        current = self._mode_var.get()
-        for val, btn in self._mode_btns.items():
-            if val == current:
-                btn.configure(fg_color="#10a37f", text_color="white", hover_color="#0d8c6d")
+    def _update_mode_buttons(self, val=None):
+        if val is None:
+            return
+        for v, btn in self._mode_btns.items():
+            if v == val:
+                btn.setStyleSheet(BTN_MODE_ACTIVE)
             else:
-                btn.configure(fg_color="transparent", text_color="#333333", hover_color="#e0e0e0")
+                btn.setStyleSheet(BTN_MODE_INACTIVE)
 
     # ── Subnet calculation ──
 
     def _calc_subnet(self):
-        ip_str = self._ip_var.get().strip()
-        mask_str = self._mask_var.get().strip()
+        ip_str = self._ip_entry.text().strip()
+        mask_str = self._mask_entry.text().strip()
 
         if not ip_str:
             self._clear_subnet_results()
             return
 
-        # Build CIDR notation
-        if mask_str:
-            # Check if mask_str is a plain number (CIDR prefix length)
-            if mask_str.isdigit():
-                cidr_str = f"{ip_str}/{mask_str}"
-            else:
-                # Treat as dotted mask
-                cidr_str = f"{ip_str}/{mask_str}"
+        if mask_str.isdigit():
+            cidr_str = f"{ip_str}/{mask_str}"
+        elif mask_str:
+            cidr_str = f"{ip_str}/{mask_str}"
         else:
             cidr_str = ip_str
 
@@ -299,20 +299,17 @@ class SubnetCalcModule(ToolModule):
             network = ipaddress.ip_network(cidr_str, strict=False)
         except ValueError:
             self._set_result("cidr", "输入格式错误")
-            for key, lbl in self._result_items:
-                if key != "cidr":
-                    lbl.configure(text="-")
-            self._binary_viz.delete("1.0", "end")
-            self._binary_viz.insert("1.0", "无法解析输入，请检查格式")
+            for k in self._result_labels:
+                if k != "cidr":
+                    self._result_labels[k].setText("-")
+            self._binary_viz.setPlainText("无法解析输入，请检查格式")
             return
 
-        # Fill results
         self._set_result("cidr", str(network))
         self._set_result("network", str(network.network_address))
         self._set_result("broadcast", str(network.broadcast_address))
         self._set_result("mask", str(network.netmask))
 
-        # Binary mask
         prefix = network.prefixlen
         bits = '1' * prefix + '0' * (32 - prefix)
         mask_bin = '.'.join([str(int(bits[i:i+8], 2)) for i in range(0, 32, 8)])
@@ -335,7 +332,6 @@ class SubnetCalcModule(ToolModule):
             self._set_result("last_host", "-")
             self._set_result("hosts", f"{network.num_addresses - 2} 个（点对点链路）")
 
-        # IP class
         first_octet = int(str(network.network_address).split('.')[0])
         if first_octet <= 126:
             ip_class = "A 类 (1-126)"
@@ -348,31 +344,23 @@ class SubnetCalcModule(ToolModule):
         else:
             ip_class = "E 类 - 保留 (240-255)"
         self._set_result("ip_class", ip_class)
-
         self._set_result("is_private", "是" if network.is_private else "否")
 
-        # Wildcard mask
         wc = ipaddress.IPv4Address(int(network.netmask) ^ 0xFFFFFFFF)
         self._set_result("wildcard", str(wc))
 
-        # Binary visualization
         self._draw_binary_viz(network)
 
     def _set_result(self, key, value):
-        for k, lbl in self._result_items:
-            if k == key:
-                lbl.configure(text=value)
-                return
+        if key in self._result_labels:
+            self._result_labels[key].setText(value)
 
     def _clear_subnet_results(self):
-        for k, lbl in self._result_items:
-            lbl.configure(text="-")
-        self._binary_viz.delete("1.0", "end")
-        self._binary_viz.insert("1.0", "输入 IP 地址和掩码后自动显示...")
+        for lbl in self._result_labels.values():
+            lbl.setText("-")
+        self._binary_viz.setPlainText("输入 IP 地址和掩码后自动显示...")
 
     def _draw_binary_viz(self, network):
-        self._binary_viz.delete("1.0", "end")
-
         net_addr = network.network_address
         bcast = network.broadcast_address
         mask = network.netmask
@@ -385,7 +373,6 @@ class SubnetCalcModule(ToolModule):
         mask_bits = ip_to_bits(mask)
         bcast_bits = ip_to_bits(bcast)
 
-        # Binary display with aligned labels
         labels = ["网络地址", "子网掩码", "广播地址"]
         bits_list = [net_bits, mask_bits, bcast_bits]
         lines = []
@@ -394,71 +381,55 @@ class SubnetCalcModule(ToolModule):
             bits_str = ".".join(octets)
             lines.append(f"  {label.ljust(6, '\u3000')}：{bits_str}")
 
-        # Network portion vs host portion
         net_portion = net_bits[:prefix]
         host_portion = net_bits[prefix:]
+        sep_line = "  " + "\u2500" * 38
 
-        sep = "  " + "─" * 38
-
-        viz_text = "\n".join([
+        viz_text = "\n\n".join([
             f"  {'网络部分'.ljust(6, '\u3000')}：({prefix} 位)  {net_portion}",
             f"  {'主机部分'.ljust(6, '\u3000')}：({32-prefix} 位)  {host_portion}",
-            sep,
+            sep_line,
             *lines,
         ])
-
-        self._binary_viz.insert("1.0", viz_text)
+        self._binary_viz.setPlainText(viz_text)
 
     # ── Summary calculation ──
 
     def _calc_summary(self):
-        content = self._summary_text_tk.get("1.0", "end").strip()
-        self._summary_output.delete("1.0", "end")
+        content = self._summary_input.toPlainText().strip()
 
         if not content:
-            self._summary_output.insert("1.0", "请输入至少一个网络地址")
+            self._summary_output.setPlainText("请输入至少一个网络地址")
             return
 
         lines = [l.strip() for l in content.splitlines() if l.strip()]
-
         networks = []
         for line in lines:
             try:
                 net = ipaddress.ip_network(line, strict=False)
                 networks.append(net)
             except ValueError:
-                self._summary_output.insert("1.0", f"错误: 无法解析 \"{line}\"\n")
+                self._summary_output.setPlainText(f'错误: 无法解析 "{line}"')
                 return
 
-        if len(networks) == 0:
-            self._summary_output.insert("1.0", "未输入有效的网络地址")
+        if not networks:
+            self._summary_output.setPlainText("未输入有效的网络地址")
             return
 
         if len(networks) == 1:
             net = networks[0]
-            rows = [
-                ("输入网络", str(net)),
-                ("汇总结果", str(net)),
-            ]
-            viz_text = "\n".join(f"  {label.ljust(6, '\u3000')}：{value}" for label, value in rows)
+            rows = [("输入网络", str(net)), ("汇总结果", str(net))]
+            viz_text = "\n\n".join(f"  {l.ljust(6, '\u3000')}：{v}" for l, v in rows)
             viz_text += "\n\n  （仅输入了一个网络，无需汇总）"
-            self._summary_output.insert("1.0", viz_text)
+            self._summary_output.setPlainText(viz_text)
             return
 
-        # Sort networks by network address
         networks.sort(key=lambda n: int(n.network_address))
 
-        # Calculate summary route
         try:
             collapsed = list(ipaddress.collapse_addresses(networks))
+            rows = [("输入网络", ", ".join(str(n) for n in networks))]
 
-            # Build label-value rows
-            rows = []
-
-            # Input networks
-            rows.append(("输入网络", ", ".join(str(n) for n in networks)))
-
-            # Best summary — show which inputs each collapsed route covers
             if len(collapsed) == 1:
                 rows.append(("最优汇总", str(collapsed[0])))
             else:
@@ -471,7 +442,6 @@ class SubnetCalcModule(ToolModule):
                         detail_lines.append(f"  {s}")
                 rows.append(("最优汇总", "\n" + "\n".join(detail_lines)))
 
-            # Supernet
             all_addrs = []
             for net in networks:
                 all_addrs.append(int(net.network_address))
@@ -484,12 +454,8 @@ class SubnetCalcModule(ToolModule):
                 f"{ipaddress.IPv4Address(min_addr)}/{supernet_prefix}", strict=False)
             rows.append(("覆盖超网", str(supernet)))
 
-            # Render
-            viz_text = "\n".join(
-                f"  {label.ljust(6, '\u3000')}：{value}"
-                for label, value in rows
-            )
-            self._summary_output.insert("1.0", viz_text)
+            viz_text = "\n\n".join(f"  {l.ljust(6, '\u3000')}：{v}" for l, v in rows)
+            self._summary_output.setPlainText(viz_text)
 
         except Exception as e:
-            self._summary_output.insert("end", f"\n  汇总计算错误: {e}\n")
+            self._summary_output.setPlainText(f"\n  汇总计算错误: {e}")

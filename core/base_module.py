@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-"""ToolModule - base class for all toolbox features."""
+"""ToolModule - base class for all toolbox features (PySide6 edition)."""
 
 
 class ToolModule:
@@ -26,9 +26,12 @@ class ToolModule:
       - name: str           (sidebar button label)
       - icon: str           (emoji icon for sidebar)
       - description: str    (subtitle text below the page title)
-      - build(parent)       (build the UI into parent frame)
+      - build(parent)       (build the UI into parent QWidget)
       - on_show()           (optional, called when page becomes visible)
       - on_hide()           (optional, called when page is hidden)
+
+    parent passed to build() is a QWidget.
+    self.app is the NetworkToolboxApp (QMainWindow) instance.
     """
 
     name: str = "Untitled"
@@ -38,11 +41,11 @@ class ToolModule:
     disabled_text: str = ""
 
     def __init__(self, app):
-        """app: the NetworkToolboxApp instance, available for after() etc."""
+        """app: the NetworkToolboxApp instance, provides after() etc."""
         self.app = app
 
     def build(self, parent):
-        """Build UI content into the given parent CTkFrame."""
+        """Build UI content into the given parent QWidget."""
         raise NotImplementedError
 
     def on_show(self):

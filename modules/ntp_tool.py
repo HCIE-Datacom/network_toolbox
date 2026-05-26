@@ -16,20 +16,31 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-"""NTP Tool module - combined NTP client and server."""
+"""NTP Tool module - combined NTP client and server (PySide6 edition)."""
 
 import socket
 import struct
 import time
 import threading
 import platform
-import customtkinter as ctk
-from tkinter import messagebox
+
+from PySide6.QtWidgets import (
+    QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QLineEdit, QPushButton, QPlainTextEdit, QTableWidget,
+    QTableWidgetItem, QHeaderView, QMessageBox,
+)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 
 from core.base_module import ToolModule
+from core.app import (
+    BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, BTN_MODE_ACTIVE, BTN_MODE_INACTIVE,
+    set_card_style, set_transparent_bg, set_dark_output,
+    H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE,
+)
 from core.logger import logger
 
-# ========== Shared NTP Protocol ==========
+# ========== Shared NTP Protocol (unchanged) ==========
 
 NTP_EPOCH_DIFF = 2208988800
 NTP_PACKET_FORMAT = "!B B B b 11I"
@@ -38,8 +49,6 @@ NTP_PACKET_FORMAT = "!B B B b 11I"
 def _ntp_to_unix_seconds(tx_int, tx_frac):
     return (tx_int - NTP_EPOCH_DIFF) + (tx_frac / (2 ** 32))
 
-
-# ========== Client helpers ==========
 
 def _create_ntp_packet(version=4, mode=3):
     first_byte = (0 << 6) | (version << 3) | mode
@@ -57,24 +66,19 @@ def _query_ntp(server, port=123, timeout=5):
         local_after = time.time()
     finally:
         sock.close()
-
     if len(data) < 48:
         raise ValueError("Received packet too short")
-
     unpacked = struct.unpack(NTP_PACKET_FORMAT, data)
     tx_int, tx_frac = unpacked[13], unpacked[14]
     server_time = _ntp_to_unix_seconds(tx_int, tx_frac)
     rtt = local_after - local_before
     offset = server_time - (local_before + local_after) / 2
-
     return {
         "server": server, "server_ip": addr[0],
         "server_time": server_time, "local_time": local_after,
         "rtt": rtt, "offset": offset,
     }
 
-
-# ========== Server helpers ==========
 
 def _parse_ntp_request(data):
     unpacked = struct.unpack(NTP_PACKET_FORMAT, data)
@@ -118,7 +122,6 @@ class _NTPServerThread(threading.Thread):
         except Exception as e:
             self.log_callback(f"{self._ts()}  [错误] 绑定失败: {e}")
             return
-
         self.log_callback(f"{self._ts()}  [启动] NTP 服务器正在监听 0.0.0.0:{self.port}")
         while not self.stop_event.is_set():
             try:
@@ -150,185 +153,254 @@ class _NTPServerThread(threading.Thread):
             pass
 
 
-# ========== Module ==========
+# ═══════════════ Module ═══════════════
+
 
 class NTPToolModule(ToolModule):
     name = "NTP 工具"
-    icon = "🕐"
+    icon = "\U0001f550"
     description = "查询网络时间服务器或在本机启动 NTP 服务，为局域网设备提供时间同步。"
 
-    def build(self, parent):
+    def build(self, parent: QWidget):
+        if parent.layout() is None:
+            parent.setLayout(QVBoxLayout(parent))
+        layout = parent.layout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
         # Title
-        ctk.CTkLabel(parent, text=self.name,
-                      font=("Helvetica", 22, "bold"), text_color="#1f1f1f").pack(anchor="w", pady=(0, 5))
-        ctk.CTkLabel(parent, text=self.description,
-                      font=("Helvetica", 13), text_color="#6b6b6b",
-                      wraplength=620, justify="left").pack(anchor="w", pady=(0, 15))
+        title = QLabel(self.name)
+        title.setStyleSheet(H1_STYLE)
+        layout.addWidget(title)
+        layout.addSpacing(5)
 
-        # ===== Mode selector =====
-        mode_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                 border_width=1, border_color="#e5e5e5")
-        mode_card.pack(fill="x", pady=(0, 15))
-        mode_inner = ctk.CTkFrame(mode_card, fg_color="transparent")
-        mode_inner.pack(fill="x", padx=15, pady=15)
+        desc = QLabel(self.description)
+        desc.setStyleSheet(DESC_STYLE)
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+        layout.addSpacing(15)
 
-        ctk.CTkLabel(mode_inner, text="功能模式",
-                     font=("Helvetica", 12, "bold"), text_color="#333333").pack(anchor="w", pady=(0, 8))
+        # Mode selector
+        mode_card = QFrame()
+        set_card_style(mode_card)
+        mc_layout = QVBoxLayout(mode_card)
+        mc_layout.setContentsMargins(15, 12, 15, 12)
+        mc_layout.setSpacing(8)
 
-        self._mode_var = ctk.StringVar(value="client")
-        mode_btn_frame = ctk.CTkFrame(mode_inner, fg_color="#f0f0f0", corner_radius=8)
-        mode_btn_frame.pack(fill="x")
+        ml = QLabel("功能模式")
+        ml.setStyleSheet(H2_STYLE)
+        mc_layout.addWidget(ml)
+
+        mb_wrapper = QWidget()
+        mb_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        mb_wrapper.setStyleSheet("background: #f0f0f0; border: none; border-radius: 8px;")
+        mbl = QHBoxLayout(mb_wrapper)
+        mbl.setContentsMargins(4, 4, 4, 4)
+        mbl.setSpacing(4)
+
         self._mode_btns = {}
-        for val, label_text in [("client", "客户端"), ("server", "服务器")]:
-            btn = ctk.CTkButton(mode_btn_frame, text=label_text, width=0, height=32,
-                                font=("Helvetica", 12), corner_radius=6,
-                                fg_color="transparent", text_color="#333333",
-                                hover_color="#e0e0e0",
-                                command=lambda v=val: self._set_mode(v))
-            btn.pack(side="left", expand=True, fill="x", padx=2, pady=2)
+        for val, text in [("client", "客户端"), ("server", "服务器")]:
+            btn = QPushButton(text)
+            btn.setFixedHeight(32)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda checked=False, v=val: self._set_mode(v))
+            mbl.addWidget(btn, stretch=1)
             self._mode_btns[val] = btn
-        self._update_mode_buttons()
+        self._update_mode_buttons(val="client")
+        mc_layout.addWidget(mb_wrapper)
 
-        # ===== Content container =====
-        content_card = ctk.CTkFrame(parent, corner_radius=12, fg_color="white",
-                                    border_width=1, border_color="#e5e5e5")
-        content_card.pack(fill="both", expand=True)
+        layout.addWidget(mode_card)
+        layout.addSpacing(15)
 
-        content_inner = ctk.CTkFrame(content_card, fg_color="transparent")
-        content_inner.pack(fill="both", expand=True, padx=15, pady=15)
+        # Content card
+        content_card = QFrame()
+        set_card_style(content_card)
+        cc_layout = QVBoxLayout(content_card)
+        cc_layout.setContentsMargins(15, 12, 15, 12)
 
-        # ----- Client UI -----
-        self._client_frame = ctk.CTkFrame(content_inner, fg_color="transparent")
+        # Client frame
+        self._client_frame = QWidget()
+        set_transparent_bg(self._client_frame)
         self._build_client_ui(self._client_frame)
+        cc_layout.addWidget(self._client_frame)
 
-        # ----- Server UI -----
-        self._server_frame = ctk.CTkFrame(content_inner, fg_color="transparent")
+        # Server frame
+        self._server_frame = QWidget()
+        set_transparent_bg(self._server_frame)
         self._build_server_ui(self._server_frame)
+        cc_layout.addWidget(self._server_frame)
+        self._server_frame.hide()
 
-        # Start in client mode
-        self._set_mode("client")
+        layout.addWidget(content_card, stretch=1)
 
-    # ========== Client UI ==========
-
-    def _build_client_ui(self, parent):
-        # Label
-        ctk.CTkLabel(parent, text="NTP 服务器",
-                     font=("Helvetica", 12, "bold"), text_color="#333333").pack(anchor="w", pady=(0, 6))
-
-        # Input + button on same row
-        row = ctk.CTkFrame(parent, fg_color="transparent")
-        row.pack(fill="x", pady=(0, 12))
-        row.grid_columnconfigure(0, weight=1)
-
-        self._server_var = ctk.StringVar(value="ntp.aliyun.com")
-        self._server_entry = ctk.CTkEntry(row, textvariable=self._server_var,
-                                           placeholder_text="例如: ntp.aliyun.com",
-                                           font=("Helvetica", 13), corner_radius=8,
-                                           height=38, border_color="#d1d5db", border_width=1)
-        self._server_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
-        self._server_entry.bind("<Return>", lambda e: self._on_test())
-
-        self._test_btn = ctk.CTkButton(row, text="测试", command=self._on_test,
-                                        width=90, height=38, font=("Helvetica", 13, "bold"),
-                                        corner_radius=8, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._test_btn.grid(row=0, column=1)
-
-        # Result area
-        self._result_grid = ctk.CTkFrame(parent, fg_color="transparent")
-        self._result_grid.pack(fill="both", expand=True, pady=(12, 0))
-        self._result_grid.grid_columnconfigure(1, weight=1)
-        self._result_labels = {}
-
-        ctk.CTkLabel(self._result_grid, text="查询结果",
-                      font=("Helvetica", 12, "bold"), text_color="#333333").grid(
-            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
-
-        keys = ["服务器:", "状态:", "服务器时间:", "北京时间:", "本地时间:", "往返时延:", "时间偏移:", "结论:"]
-        for i, key in enumerate(keys):
-            ctk.CTkLabel(self._result_grid, text=key, font=("Helvetica", 12),
-                          text_color="#666666", width=90, anchor="e").grid(
-                row=i + 1, column=0, sticky="ne", padx=(0, 12), pady=4)
-            lbl = ctk.CTkLabel(self._result_grid, text="", font=("Helvetica", 12),
-                                text_color="#333333", anchor="w", justify="left")
-            lbl.grid(row=i + 1, column=1, sticky="nw", pady=4)
-            self._result_labels[key] = lbl
-
-    # ========== Server UI ==========
-
-    def _build_server_ui(self, parent):
-        ctk.CTkLabel(parent, text="服务配置",
-                     font=("Helvetica", 12, "bold"), text_color="#333333").pack(anchor="w", pady=(0, 8))
-
-        # Port row
-        pr = ctk.CTkFrame(parent, fg_color="transparent")
-        pr.pack(fill="x")
-        pr.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(pr, text="监听端口:", font=("Helvetica", 13),
-                     text_color="#333333").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self._port_var = ctk.StringVar(value="123")
-        self._port_entry = ctk.CTkEntry(pr, textvariable=self._port_var, width=100,
-                                         font=("Helvetica", 13), corner_radius=8,
-                                         height=38, border_color="#d1d5db", border_width=1)
-        self._port_entry.grid(row=0, column=1, sticky="w")
-        ctk.CTkLabel(pr, text="(1024 以下端口需要管理员权限)",
-                     font=("Helvetica", 11), text_color="#8e8e8e").grid(row=0, column=2, sticky="w", padx=(10, 0))
-
-        # Toggle row
-        br = ctk.CTkFrame(parent, fg_color="transparent")
-        br.pack(fill="x", pady=(12, 0))
-        self._toggle_btn = ctk.CTkButton(br, text="启动服务", command=self._toggle,
-                                          width=120, height=38, font=("Helvetica", 13, "bold"),
-                                          corner_radius=8, fg_color="#10a37f", hover_color="#0d8c6d")
-        self._toggle_btn.pack(side="left")
-        self._status_label = ctk.CTkLabel(br, text="状态: 已停止",
-                                           font=("Helvetica", 13), text_color="#666666")
-        self._status_label.pack(side="left", padx=(15, 0))
-
-        # Log area
-        ctk.CTkLabel(parent, text="运行日志",
-                     font=("Helvetica", 12, "bold"), text_color="#333333").pack(anchor="w", pady=(12, 8))
-
-        mono = ("SF Mono", max(11, 11)) if platform.system() == "Darwin" else ("Consolas", max(11, 11))
-        self._log_text = ctk.CTkTextbox(parent, font=mono, wrap="word", corner_radius=8,
-                                         fg_color="white", text_color="#333333",
-                                         border_width=1, border_color="#e5e5e5",
-                                         activate_scrollbars=True)
-        self._log_text.pack(fill="both", expand=True, pady=(0, 8))
-        self._log_text.configure(state="disabled")
-
-        # State
         self._server_thread = None
 
-    # ========== Mode switching ==========
+    # ── Client UI ──
+
+    def _build_client_ui(self, parent):
+        fl = QVBoxLayout(parent)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(0)
+
+        lb = QLabel("NTP 服务器")
+        lb.setStyleSheet(H2_STYLE)
+        fl.addWidget(lb)
+        fl.addSpacing(6)
+
+        row = QWidget()
+        set_transparent_bg(row)
+        rl = QHBoxLayout(row)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(10)
+
+        self._server_entry = QLineEdit()
+        self._server_entry.setText("ntp.aliyun.com")
+        self._server_entry.setPlaceholderText("例如: ntp.aliyun.com")
+        self._server_entry.setMinimumHeight(38)
+        self._server_entry.returnPressed.connect(self._on_test)
+        rl.addWidget(self._server_entry, stretch=1)
+
+        self._test_btn = QPushButton("测试")
+        self._test_btn.setStyleSheet(BTN_PRIMARY)
+        self._test_btn.setFixedSize(90, 38)
+        self._test_btn.clicked.connect(self._on_test)
+        rl.addWidget(self._test_btn)
+
+        fl.addWidget(row)
+        fl.addSpacing(12)
+
+        # Result output — dark styled text area (matching subnet calc summary style)
+        rh = QLabel("查询结果")
+        rh.setStyleSheet(H2_STYLE)
+        fl.addWidget(rh)
+        fl.addSpacing(6)
+
+        self._result_output = QTableWidget(0, 3)
+        self._result_output.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._result_output.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self._result_output.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._result_output.horizontalHeader().setVisible(False)
+        self._result_output.verticalHeader().setVisible(False)
+        self._result_output.horizontalHeader().setStretchLastSection(True)
+        self._result_output.setShowGrid(False)
+        self._result_output.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #e5e5e5; border-radius: 8px;
+                background: #1e1e1e; color: #e0e0e0;
+                font-family: "Courier", monospace; font-size: 12px;
+                padding: 4px;
+            }
+            QTableWidget::item { padding: 3px 8px; border: none; }
+        """)
+        self._result_output.setColumnWidth(0, 100)
+        self._result_output.setColumnWidth(1, 20)
+        self._result_output.setRowCount(1)
+        placeholder = QTableWidgetItem("输入 NTP 服务器地址后点击测试...")
+        placeholder.setForeground(QColor("#888888"))
+        self._result_output.setItem(0, 0, placeholder)
+        self._result_output.setSpan(0, 0, 1, 3)
+        fl.addWidget(self._result_output, stretch=1)
+
+    # ── Server UI ──
+
+    def _build_server_ui(self, parent):
+        fl = QVBoxLayout(parent)
+        fl.setContentsMargins(0, 0, 0, 0)
+        fl.setSpacing(0)
+
+        lb = QLabel("服务配置")
+        lb.setStyleSheet(H2_STYLE)
+        fl.addWidget(lb)
+        fl.addSpacing(8)
+
+        pr = QWidget()
+        set_transparent_bg(pr)
+        prl = QHBoxLayout(pr)
+        prl.setContentsMargins(0, 0, 0, 0)
+        prl.setSpacing(10)
+
+        pl = QLabel("监听端口:")
+        pl.setStyleSheet(BODY_STYLE)
+        prl.addWidget(pl)
+
+        self._port_entry = QLineEdit()
+        self._port_entry.setText("123")
+        self._port_entry.setFixedWidth(100)
+        self._port_entry.setMinimumHeight(36)
+        prl.addWidget(self._port_entry)
+
+        ph = QLabel("(1024 以下端口需要管理员权限)")
+        ph.setStyleSheet(HINT_STYLE)
+        prl.addWidget(ph)
+        prl.addStretch(1)
+        fl.addWidget(pr)
+
+        # Toggle row
+        br = QWidget()
+        set_transparent_bg(br)
+        brl = QHBoxLayout(br)
+        brl.setContentsMargins(0, 0, 0, 0)
+        brl.setSpacing(15)
+        fl.addSpacing(12)
+        fl.addWidget(br)
+
+        self._toggle_btn = QPushButton("启动服务")
+        self._toggle_btn.setStyleSheet(BTN_PRIMARY)
+        self._toggle_btn.setFixedSize(120, 38)
+        self._toggle_btn.clicked.connect(self._toggle)
+        brl.addWidget(self._toggle_btn)
+
+        self._status_label = QLabel("状态: 已停止")
+        self._status_label.setStyleSheet(BODY_STYLE + " color: #666666;")
+        brl.addWidget(self._status_label)
+        brl.addStretch(1)
+
+        # Log area
+        fl.addSpacing(12)
+        ll = QLabel("运行日志")
+        ll.setStyleSheet(H2_STYLE)
+        fl.addWidget(ll)
+        fl.addSpacing(8)
+
+        self._log_text = QPlainTextEdit()
+        self._log_text.setReadOnly(True)
+        set_dark_output(self._log_text)
+        fl.addWidget(self._log_text, stretch=1)
+
+    # ── Mode switching ──
 
     def _set_mode(self, mode):
-        self._mode_var.set(mode)
-        self._update_mode_buttons()
+        self._update_mode_buttons(mode)
         if mode == "client":
-            self._client_frame.pack(fill="both", expand=True)
-            self._server_frame.pack_forget()
+            self._client_frame.show()
+            self._server_frame.hide()
         else:
-            self._client_frame.pack_forget()
-            self._server_frame.pack(fill="both", expand=True)
+            self._client_frame.hide()
+            self._server_frame.show()
 
-    def _update_mode_buttons(self):
-        current = self._mode_var.get()
-        for val, btn in self._mode_btns.items():
-            if val == current:
-                btn.configure(fg_color="#10a37f", text_color="white", hover_color="#0d8c6d")
+    def _update_mode_buttons(self, val=None):
+        if val is None:
+            return
+        for v, btn in self._mode_btns.items():
+            if v == val:
+                btn.setStyleSheet(BTN_MODE_ACTIVE)
             else:
-                btn.configure(fg_color="transparent", text_color="#333333", hover_color="#e0e0e0")
+                btn.setStyleSheet(BTN_MODE_INACTIVE)
 
-    # ========== Client actions ==========
+    # ── Client actions ──
 
     def _on_test(self):
-        server = self._server_var.get().strip()
+        server = self._server_entry.text().strip()
         if not server:
-            messagebox.showwarning("提示", "请输入 NTP 服务器地址")
+            QMessageBox.warning(self.app, "提示", "请输入 NTP 服务器地址")
             return
-        self._test_btn.configure(state="disabled", text="测试中...")
+        self._test_btn.setEnabled(False)
+        self._test_btn.setText("测试中...")
         self._clear_results()
-        self._result_labels["状态:"].configure(text="查询中，请稍候...")
+        msg = QTableWidgetItem("查询中，请稍候...")
+        msg.setForeground(QColor("#888888"))
+        self._result_output.setItem(0, 0, msg)
+        self._result_output.setSpan(0, 0, 1, 3)
         threading.Thread(target=self._do_query, args=(server,), daemon=True).start()
 
     def _do_query(self, server):
@@ -353,11 +425,9 @@ class NTPToolModule(ToolModule):
             self.app.after(0, self._show_error, f"查询失败: {e}")
 
     def _show_success(self, r):
-        self._clear_results()
         st = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["server_time"]))
         lt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["local_time"]))
         bt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(r["beijing_time"]))
-        rtt = r["rtt"] * 1000
         off = r["offset"] * 1000
 
         if abs(r["offset"]) < 0.001:
@@ -367,26 +437,57 @@ class NTPToolModule(ToolModule):
         else:
             conclusion = f"本地时钟快了约 {-r['offset']:.6f} 秒，建议调慢。"
 
-        for k, v in [
-            ("服务器:", r["server_ip"]), ("状态:", "成功"),
-            ("服务器时间:", f"{st} (UTC+8)"), ("北京时间:", f"{bt} (UTC+8)"),
-            ("本地时间:", f"{lt} (UTC+8)"), ("往返时延:", f"{rtt:.3f} ms"),
-            ("时间偏移:", f"{off:+.3f} ms"), ("结论:", conclusion),
-        ]:
-            self._result_labels[k].configure(text=v)
-        self._test_btn.configure(state="normal", text="测试")
+        rows = [
+            ("服务器",     ":", r["server_ip"]),
+            ("状态",       ":", "成功"),
+            ("服务器时间", ":", f"{st} (UTC+8)"),
+            ("北京时间",   ":", f"{bt} (UTC+8)"),
+            ("本地时间",   ":", f"{lt} (UTC+8)"),
+            ("往返时延",   ":", f"{r['rtt']*1000:.3f} ms"),
+            ("时间偏移",   ":", f"{off:+.3f} ms"),
+            ("结论",       ":", conclusion),
+        ]
+        tbl = self._result_output
+        tbl.clear()
+        tbl.clearSpans()
+        tbl.setRowCount(len(rows))
+        col_color = QColor("#e0e0e0")
+        for i, (label, colon, val) in enumerate(rows):
+            li = QTableWidgetItem(label)
+            li.setTextAlignment(Qt.AlignmentFlag.AlignJustify | Qt.AlignmentFlag.AlignVCenter)
+            li.setForeground(col_color)
+            tbl.setItem(i, 0, li)
+
+            ci = QTableWidgetItem(colon)
+            ci.setForeground(col_color)
+            tbl.setItem(i, 1, ci)
+
+            vi = QTableWidgetItem(val)
+            vi.setForeground(col_color)
+            tbl.setItem(i, 2, vi)
+        tbl.resizeRowsToContents()
+        tbl.resizeColumnToContents(0)
+        self._test_btn.setEnabled(True)
+        self._test_btn.setText("测试")
 
     def _show_error(self, msg):
-        self._clear_results()
-        self._result_labels["状态:"].configure(text="查询失败")
-        self._result_labels["结论:"].configure(text=msg)
-        self._test_btn.configure(state="normal", text="测试")
+        tbl = self._result_output
+        tbl.clear()
+        tbl.clearSpans()
+        tbl.setRowCount(1)
+        err = QTableWidgetItem(f"查询失败\n{msg}")
+        err.setForeground(QColor("#dc2626"))
+        tbl.setItem(0, 0, err)
+        tbl.setSpan(0, 0, 1, 3)
+        self._test_btn.setEnabled(True)
+        self._test_btn.setText("测试")
 
     def _clear_results(self):
-        for lbl in self._result_labels.values():
-            lbl.configure(text="")
+        self._result_output.clear()
+        self._result_output.clearSpans()
+        self._result_output.setRowCount(0)
 
-    # ========== Server actions ==========
+    # ── Server actions ──
 
     def _toggle(self):
         if self._server_thread and not self._server_thread.stop_event.is_set():
@@ -395,36 +496,41 @@ class NTPToolModule(ToolModule):
             self._start()
 
     def _start(self):
-        port_str = self._port_var.get().strip()
+        port_str = self._port_entry.text().strip()
         if not port_str.isdigit() or not (1 <= int(port_str) <= 65535):
-            messagebox.showwarning("提示", "请输入有效的端口号 (1-65535)")
+            QMessageBox.warning(self.app, "提示", "请输入有效的端口号 (1-65535)")
             return
         logger.info(f"[NTP服务器] 启动服务, 端口: {port_str}")
         self._log_clear()
         self._server_thread = _NTPServerThread(int(port_str), self._log)
         self._server_thread.start()
-        self._toggle_btn.configure(text="停止服务", fg_color="#dc2626", hover_color="#b91c1c")
-        self._status_label.configure(text="状态: 运行中", text_color="#10a37f")
-        self._port_entry.configure(state="disabled")
+        self._toggle_btn.setText("停止服务")
+        self._toggle_btn.setStyleSheet(BTN_DANGER)
+        self._status_label.setText("状态: 运行中")
+        self._status_label.setStyleSheet(BODY_STYLE + " color: #10a37f;")
+        self._port_entry.setEnabled(False)
 
     def _stop(self):
         logger.info("[NTP服务器] 停止服务")
         if self._server_thread:
             self._server_thread.stop()
             self._server_thread = None
-        self._toggle_btn.configure(text="启动服务", fg_color="#10a37f", hover_color="#0d8c6d")
-        self._status_label.configure(text="状态: 已停止", text_color="#666666")
-        self._port_entry.configure(state="normal")
+        self._toggle_btn.setText("启动服务")
+        self._toggle_btn.setStyleSheet(BTN_PRIMARY)
+        self._status_label.setText("状态: 已停止")
+        self._status_label.setStyleSheet(BODY_STYLE + " color: #666666;")
+        self._port_entry.setEnabled(True)
 
     def _log(self, text):
         def _up():
-            self._log_text.configure(state="normal")
-            self._log_text.insert("end", text + "\n")
-            self._log_text.see("end")
-            self._log_text.configure(state="disabled")
+            self._log_text.setReadOnly(False)
+            self._log_text.appendPlainText(text)
+            sb = self._log_text.verticalScrollBar()
+            sb.setValue(sb.maximum())
+            self._log_text.setReadOnly(True)
         self.app.after(0, _up)
 
     def _log_clear(self):
-        self._log_text.configure(state="normal")
-        self._log_text.delete("0.0", "end")
-        self._log_text.configure(state="disabled")
+        self._log_text.setReadOnly(False)
+        self._log_text.clear()
+        self._log_text.setReadOnly(True)
