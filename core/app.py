@@ -146,7 +146,7 @@ DARK_OUTPUT = """
     QPlainTextEdit {
         border: 1px solid #e5e5e5; border-radius: 8px;
         background: #1e1e1e; color: #e0e0e0;
-        font-family: "Courier", monospace; font-size: 12px;
+        font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 12px;
         padding: 8px;
     }
     QPlainTextEdit QScrollBar:vertical {
@@ -181,7 +181,8 @@ def set_dark_output(editor: QPlainTextEdit):
 GLOBAL_QSS = r"""
 /* ---- Global Font & Background ---- */
 QWidget {
-    font-family: "PingFang SC", "Helvetica Neue", sans-serif;
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "STHeiti", "WenQuanYi Micro Hei", sans-serif;
+    font-size: 13px;
     background: transparent;
 }
 /* ---- QFrame: kill default rectangular border on macOS ---- */
@@ -282,6 +283,12 @@ QProgressBar::chunk {
 }
 
 /* ---- Dialog / Message Box ---- */
+QMessageBox {
+    background: #ffffff;
+}
+QMessageBox QLabel {
+    color: #333333; font-size: 13px;
+}
 QMessageBox QPushButton {
     background: #10a37f; color: #ffffff; border: none;
     border-radius: 6px; padding: 6px 24px; font-size: 13px; font-weight: bold;
@@ -359,7 +366,7 @@ QHeaderView::section {
 class NetworkToolboxApp(QMainWindow):
     """Plugin-style main window. Reads MODULE_REGISTRY and auto-generates UI."""
 
-    VERSION = "v1.5.0"
+    VERSION = "v1.6.0"
 
     def __init__(self, module_registry):
         super().__init__()
@@ -408,7 +415,7 @@ class NetworkToolboxApp(QMainWindow):
         """Walk up from __file__ to find the icon image."""
         p = os.path.dirname(os.path.abspath(__file__))
         for _ in range(10):
-            for name in ("image_icon.png", "image.png", "logo_alpha.png", "logo.png"):
+            for name in ("image_icon.png", "icon/app.png", "image.png", "logo_alpha.png", "logo.png"):
                 logo = os.path.join(p, name)
                 if os.path.isfile(logo):
                     return logo
@@ -418,39 +425,53 @@ class NetworkToolboxApp(QMainWindow):
             p = parent
         return None
 
-    # ═══════════════ Context Menu Filter ═══════════════
+    def _resolve_icon(self, icon):
+        """Resolve icon path — if it's a filename, look in icon/ directory."""
+        if os.path.sep in icon or icon.endswith('.png'):
+            p = os.path.dirname(os.path.abspath(__file__))
+            for _ in range(10):
+                full = os.path.join(p, 'icon', icon)
+                if os.path.isfile(full):
+                    return full
+                parent = os.path.dirname(p)
+                if parent == p:
+                    break
+                p = parent
+        return icon
+
+    # ═══════════════ Unified Context Menu ═══════════════
 
     def _install_context_menu_filter(self):
-        """Install event filter to replace native QLineEdit context menu."""
+        """Walk all widgets and install per-widget context menu filter."""
         QApplication.instance().installEventFilter(self)
+        self._install_menu_on_children(self)
+
+    def _install_menu_on_children(self, parent):
+        """Recursively set NoContextMenu and install event filter."""
+        for child in parent.findChildren(QWidget):
+            if isinstance(child, (QLineEdit, QPlainTextEdit)):
+                child.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+                child.installEventFilter(self)
 
     def eventFilter(self, obj, event):
         from PySide6.QtCore import QEvent
-        if event.type() == QEvent.Type.ContextMenu and isinstance(obj, (QLineEdit, QPlainTextEdit)):
-            menu = QMenu(obj)
-            menu.setStyleSheet(self.styleSheet())  # inherit global QSS
-            if isinstance(obj, QLineEdit):
-                menu.addAction("撤销", obj.undo, QKeySequence.StandardKey.Undo)
-                menu.addAction("重做", obj.redo, QKeySequence.StandardKey.Redo)
-                menu.addSeparator()
-                menu.addAction("剪切", obj.cut, QKeySequence.StandardKey.Cut)
-                menu.addAction("复制", obj.copy, QKeySequence.StandardKey.Copy)
-                menu.addAction("粘贴", obj.paste, QKeySequence.StandardKey.Paste)
-                menu.addAction("删除", lambda: obj.backspace() if not obj.hasSelectedText() else obj.del_())
-                menu.addSeparator()
-                menu.addAction("全选", obj.selectAll, QKeySequence.StandardKey.SelectAll)
-            else:
-                menu.addAction("撤销", obj.undo, QKeySequence.StandardKey.Undo)
-                menu.addAction("重做", obj.redo, QKeySequence.StandardKey.Redo)
-                menu.addSeparator()
-                menu.addAction("剪切", obj.cut, QKeySequence.StandardKey.Cut)
-                menu.addAction("复制", obj.copy, QKeySequence.StandardKey.Copy)
-                menu.addAction("粘贴", obj.paste, QKeySequence.StandardKey.Paste)
-                menu.addSeparator()
-                menu.addAction("全选", obj.selectAll, QKeySequence.StandardKey.SelectAll)
-            menu.exec_(event.globalPos())
-            return True
+        if isinstance(obj, (QLineEdit, QPlainTextEdit)):
+            if event.type() == QEvent.Type.ContextMenu:
+                return self._show_context_menu(obj, event.globalPos())
         return super().eventFilter(obj, event)
+
+    def _show_context_menu(self, obj, pos):
+        menu = QMenu(obj)
+        menu.setStyleSheet(GLOBAL_QSS)
+        menu.addAction("剪切", obj.cut, QKeySequence.StandardKey.Cut)
+        menu.addAction("复制", obj.copy, QKeySequence.StandardKey.Copy)
+        menu.addAction("粘贴", obj.paste, QKeySequence.StandardKey.Paste)
+        if isinstance(obj, QLineEdit):
+            menu.addAction("删除", lambda: obj.backspace() if not obj.hasSelectedText() else obj.del_())
+        menu.addSeparator()
+        menu.addAction("全选", obj.selectAll, QKeySequence.StandardKey.SelectAll)
+        menu.exec_(pos)
+        return True
 
     # ═══════════════ Sidebar ═══════════════
 
@@ -563,7 +584,15 @@ class NetworkToolboxApp(QMainWindow):
 
     def _make_nav_btn(self, icon, label, idx, disabled=False, disabled_text=""):
         label_text = label if not disabled_text else f"{label} ({disabled_text})"
-        btn = QPushButton(f"  {icon}   {label_text}")
+        # Icon can be emoji string or image path
+        btn = QPushButton(f"    {label_text}")
+        if icon:
+            icon_path = self._resolve_icon(icon)
+            if os.path.isfile(icon_path):
+                btn.setIcon(QIcon(icon_path))
+                btn.setIconSize(QSize(20, 20))
+            else:
+                btn.setText(f"  {icon}   {label_text}")
         btn.setStyleSheet(BTN_NAV_INACTIVE)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if disabled:
@@ -621,6 +650,8 @@ class NetworkToolboxApp(QMainWindow):
 
         new_mod = self._modules[index]
         self._stack.setCurrentIndex(index)
+        # Ensure context menu filter covers new module's widgets
+        self._install_menu_on_children(self._pages[index])
         try:
             new_mod.on_show()
         except Exception:
@@ -690,8 +721,8 @@ class NetworkToolboxApp(QMainWindow):
         clear_btn.setStyleSheet(BTN_SECONDARY)
         refresh_btn = QPushButton("刷新")
         refresh_btn.setStyleSheet(BTN_PRIMARY)
-        refresh_btn.setFixedSize(60, 28)
-        clear_btn.setFixedSize(60, 28)
+        clear_btn.setMinimumWidth(50)
+        refresh_btn.setMinimumWidth(50)
         refresh_btn.clicked.connect(self._refresh_log_viewer)
         clear_btn.clicked.connect(self._clear_log_viewer)
         hl.addWidget(refresh_btn)
@@ -711,8 +742,17 @@ class NetworkToolboxApp(QMainWindow):
             QPlainTextEdit {
                 border: 1px solid #e5e5e5; border-radius: 8px;
                 background: #1e1e1e; color: #d4d4d4;
-                font-family: "Courier", monospace; font-size: 11px;
+                font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 11px;
                 padding: 8px;
+            }
+            QPlainTextEdit QScrollBar:vertical {
+                background: #2a2a2a; border: none; border-radius: 4px; width: 8px; margin: 2px;
+            }
+            QPlainTextEdit QScrollBar::handle:vertical {
+                background: #555555; border-radius: 4px; min-height: 30px;
+            }
+            QPlainTextEdit QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
         """)
         layout.addWidget(self._log_text)

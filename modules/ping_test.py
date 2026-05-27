@@ -2,7 +2,7 @@
 NetTool - Network Toolbox
 Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
 
-PING test module - ICMP Ping / Traceroute / TCPing (PySide6 edition).
+PING test module - ICMP Ping / Tracert / TCPing (PySide6 edition).
 """
 
 import socket
@@ -107,7 +107,7 @@ class PingTestModule(ToolModule):
         mwl = QHBoxLayout(mode_wrapper)
         mwl.setContentsMargins(4, 4, 4, 4)
         mwl.setSpacing(4)
-        for val, text in [("ping", "Ping"), ("tracert", "Traceroute"), ("tcping", "TCPing")]:
+        for val, text in [("ping", "Ping"), ("tracert", "Tracert"), ("tcping", "TCPing")]:
             btn = QPushButton(text)
             btn.setFixedHeight(30)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -328,20 +328,37 @@ class PingTestModule(ToolModule):
     # ── Traceroute ──
 
     def _run_tracert(self, target):
-        cmd = ["traceroute", target] if platform.system() != "Windows" else ["tracert", target]
+        if platform.system() == "Windows":
+            cmd = ["tracert", "-d", target]      # -d: no DNS, faster
+        else:
+            cmd = ["/usr/sbin/traceroute", "-n", target]  # -n: no DNS, faster
+        # Windows: hide CMD window
+        si = None
+        if platform.system() == "Windows":
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = subprocess.SW_HIDE
         try:
             self._popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                           text=True, bufsize=1)
+                                           text=True, bufsize=1, startupinfo=si)
+            line_count = 0
             for line in self._popen.stdout:
                 if self._stop_event.is_set():
                     break
                 line = line.strip()
                 if line:
+                    line_count += 1
                     self.app.after(0, lambda l=line: self._output.appendPlainText(l))
             self._popen.wait()
+            if line_count == 0:
+                self.app.after(0, lambda: self._output.appendPlainText(
+                    "没有收到traceroute输出，请确认目标可达且网络正常"))
         except FileNotFoundError:
             self.app.after(0, lambda: self._output.appendPlainText(
                 "traceroute 命令不可用，请确认系统已安装"))
+        except Exception as e:
+            self.app.after(0, lambda m=str(e): self._output.appendPlainText(
+                f"traceroute 执行异常: {m}"))
         except Exception as e:
             self.app.after(0, lambda: self._output.appendPlainText(f"Error: {e}"))
         finally:

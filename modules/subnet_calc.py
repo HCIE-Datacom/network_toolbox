@@ -33,6 +33,7 @@ from core.app import (
     H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE,
 )
 
+IDSP = '\u3000'
 
 class SubnetCalcModule(ToolModule):
     name = "子网计算"
@@ -138,7 +139,7 @@ class SubnetCalcModule(ToolModule):
             QPlainTextEdit {
                 border: 1px solid #d1d5db; border-radius: 8px;
                 background: #f9f9f9; color: #333333;
-                font-family: "Courier", monospace; font-size: 11px;
+                font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 11px;
                 padding: 6px;
             }
         """)
@@ -379,15 +380,15 @@ class SubnetCalcModule(ToolModule):
         for label, bits in zip(labels, bits_list):
             octets = [bits[i*8:(i+1)*8] for i in range(4)]
             bits_str = ".".join(octets)
-            lines.append(f"  {label.ljust(6, '\u3000')}：{bits_str}")
+            lines.append(f"  {label.ljust(6, IDSP)}：{bits_str}")
 
         net_portion = net_bits[:prefix]
         host_portion = net_bits[prefix:]
         sep_line = "  " + "\u2500" * 38
 
         viz_text = "\n\n".join([
-            f"  {'网络部分'.ljust(6, '\u3000')}：({prefix} 位)  {net_portion}",
-            f"  {'主机部分'.ljust(6, '\u3000')}：({32-prefix} 位)  {host_portion}",
+            f"  {'网络部分'.ljust(6, IDSP)}：({prefix} 位)  {net_portion}",
+            f"  {'主机部分'.ljust(6, IDSP)}：({32-prefix} 位)  {host_portion}",
             sep_line,
             *lines,
         ])
@@ -419,7 +420,7 @@ class SubnetCalcModule(ToolModule):
         if len(networks) == 1:
             net = networks[0]
             rows = [("输入网络", str(net)), ("汇总结果", str(net))]
-            viz_text = "\n\n".join(f"  {l.ljust(6, '\u3000')}：{v}" for l, v in rows)
+            viz_text = "\n\n".join(f"  {l.ljust(6, IDSP)}：{v}" for l, v in rows)
             viz_text += "\n\n  （仅输入了一个网络，无需汇总）"
             self._summary_output.setPlainText(viz_text)
             return
@@ -454,7 +455,7 @@ class SubnetCalcModule(ToolModule):
                 f"{ipaddress.IPv4Address(min_addr)}/{supernet_prefix}", strict=False)
             rows.append(("覆盖超网", str(supernet)))
 
-            viz_text = "\n\n".join(f"  {l.ljust(6, '\u3000')}：{v}" for l, v in rows)
+            viz_text = "\n\n".join(f"  {l.ljust(6, IDSP)}：{v}" for l, v in rows)
             self._summary_output.setPlainText(viz_text)
 
         except Exception as e:

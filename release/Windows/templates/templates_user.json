@@ -1,0 +1,4 @@
+{
+  "前缀列表": "ip ip-prefix test index {2} permit 10.10.{3}.0 24 greater-equal 24 less-equal 24",
+  "0526": "ip route-static 0.0.0.0 0 10.167.10.1"
+}

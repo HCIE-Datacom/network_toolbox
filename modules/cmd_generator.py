@@ -29,9 +29,9 @@ BUILTIN_TEMPLATES = {
     "VLANIF 接口配置": "interface Vlanif{1}\n ip address 10.10.{2}.254 255.255.255.0",
     "Eth-Trunk 接口配置": (
         "interface Eth-Trunk{1}\n"
-        " mode lacp\n"
-        " trunkport XG 1/8/0/{2}\n"
-        " trunkport XG 2/8/0/{3}\n"
+        " mode lacp-static\n"
+        " trunkport XGigabitEthernet 1/8/0/{2}\n"
+        " trunkport XGigabitEthernet 2/8/0/{3}\n"
         " port link-type trunk\n"
         " undo port trunk allow-pass vlan 1\n"
         " port trunk allow-pass vlan 3162\n"
@@ -140,15 +140,25 @@ class CmdGeneratorModule(ToolModule):
 
         # Template input
         self._templ_text = QPlainTextEdit()
-        self._templ_text.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._templ_text.customContextMenuRequested.connect(self._show_templ_menu)
         self._templ_text.setPlaceholderText("提示: 请输入命令模板，参数格式为：{1}, {2}, {3}, {4}, {5}")
         self._templ_text.setStyleSheet("""
             QPlainTextEdit {
                 border: 1px solid #e5e5e5; border-radius: 8px;
                 background: #ffffff; color: #333333;
-                font-family: "Courier", monospace; font-size: 13px;
+                font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 13px;
                 padding: 8px;
+            }
+            QPlainTextEdit QScrollBar:vertical {
+                background: #f0f0f0; border: none; border-radius: 4px; width: 8px; margin: 2px;
+            }
+            QPlainTextEdit QScrollBar::handle:vertical {
+                background: #c0c0c0; border-radius: 4px; min-height: 30px;
+            }
+            QPlainTextEdit QScrollBar::handle:vertical:hover {
+                background: #a0a0a0;
+            }
+            QPlainTextEdit QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
         """)
         self._templ_text.setFixedHeight(120)
@@ -387,11 +397,10 @@ class CmdGeneratorModule(ToolModule):
         self._templ_combo.clear()
         user_tmpl = _load_user_templates()
         for name in BUILTIN_TEMPLATES:
-            icon = "\U0001f516 " if name != "自定义" else "\u270f\ufe0f "
-            self._templ_combo.addItem(icon + name)
+            self._templ_combo.addItem(name)
         if user_tmpl:
             for name in user_tmpl:
-                self._templ_combo.addItem("\U0001f4c4 " + name)
+                self._templ_combo.addItem(name)
         self._templ_combo.blockSignals(False)
 
     def _get_template_name(self):
@@ -413,24 +422,6 @@ class CmdGeneratorModule(ToolModule):
         else:
             content = ""
         self._templ_text.setPlainText(content)
-
-    def _show_templ_menu(self, pos):
-        menu = QMenu(self._templ_text)
-        menu.setStyleSheet("""
-            QMenu { background: #ffffff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 4px; }
-            QMenu::item { padding: 6px 32px 6px 16px; font-size: 13px; color: #333; border-radius: 4px; }
-            QMenu::item:selected { background: #e8f5ee; color: #10a37f; }
-            QMenu::separator { height: 1px; background: #e5e5e5; margin: 4px 8px; }
-        """)
-        menu.addAction("撤销", self._templ_text.undo)
-        menu.addAction("重做", self._templ_text.redo)
-        menu.addSeparator()
-        menu.addAction("剪切", self._templ_text.cut)
-        menu.addAction("复制", self._templ_text.copy)
-        menu.addAction("粘贴", self._templ_text.paste)
-        menu.addSeparator()
-        menu.addAction("全选", self._templ_text.selectAll)
-        menu.exec_(self._templ_text.mapToGlobal(pos))
 
     def _save_current_template(self):
         name, ok = QInputDialog.getText(self.app, "保存模板", "输入模板名称:")

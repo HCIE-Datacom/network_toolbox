@@ -106,7 +106,7 @@ class AppLogger:
         self._logger.addHandler(self._mem)
 
         # Also log to stderr when running from terminal
-        if sys.stderr.isatty():
+        if sys.stderr and sys.stderr.isatty():
             ch = logging.StreamHandler(sys.stderr)
             ch.setLevel(logging.DEBUG)
             ch.setFormatter(logging.Formatter(

@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 from core.app import NetworkToolboxApp
 from modules import MODULE_REGISTRY
@@ -39,6 +40,14 @@ def main():
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
+
+    # Set default font for consistent cross-platform rendering
+    font = QFont()
+    font.setFamilies(["PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "STHeiti", "sans-serif"])
+    font.setPixelSize(13)
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
+    app.setFont(font)
+
     app.setApplicationName("NetTool")
     app.setOrganizationName("NetTool")
 

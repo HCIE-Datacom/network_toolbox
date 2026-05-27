@@ -17,7 +17,10 @@ from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QHeaderView,
     QDialog, QProgressBar, QFileDialog, QMessageBox,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QIcon
+
+import queue
 
 try:
     import paramiko
@@ -33,6 +36,19 @@ class FTPToolModule(ToolModule):
     name = "FTP \u5de5\u5177"
     icon = "\U0001f4c1"
     description = "FTP/SFTP \u5ba2\u6237\u7aef\u8fde\u63a5\u8fdc\u7a0b\u670d\u52a1\u5668\uff0c\u6216\u5728\u672c\u5730\u542f\u52a8 FTP \u670d\u52a1\u4f9b\u5c40\u57df\u7f51\u6587\u4ef6\u5171\u4eab\u3002"
+
+    @staticmethod
+    def _ico(name):
+        import os
+        p = os.path.dirname(os.path.abspath(__file__))
+        for _ in range(10):
+            full = os.path.join(p, 'icon', name)
+            if os.path.isfile(full):
+                return QIcon(full)
+            parent = os.path.dirname(p)
+            if parent == p: break
+            p = parent
+        return QIcon()
 
     def build(self, parent: QWidget):
         if parent.layout() is None:
@@ -192,7 +208,7 @@ class FTPToolModule(ToolModule):
         nl.setContentsMargins(0, 0, 0, 0)
         nl.setSpacing(2)
         self._path_label = QLabel("/")
-        self._path_label.setStyleSheet("font-family: Courier; font-size: 11px; color: #333; background: transparent;")
+        self._path_label.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', 'SF Mono', 'Menlo', 'Microsoft YaHei', 'Courier New', monospace; font-size: 11px; color: #333; background: transparent;")
         nl.addWidget(self._path_label, stretch=1)
 
         for txt, cmd in [("\U0001f504", self._refresh_dir), ("\u2b06", self._go_up)]:
@@ -217,6 +233,10 @@ class FTPToolModule(ToolModule):
             QTreeWidget { border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; }
             QTreeWidget::item { padding: 2px 4px; }
             QTreeWidget::item:selected { background: #e8f5ee; color: #333; }
+            QTreeWidget QScrollBar:vertical { background: #f0f0f0; border: none; border-radius: 4px; width: 8px; margin: 2px; }
+            QTreeWidget QScrollBar::handle:vertical { background: #c0c0c0; border-radius: 4px; min-height: 30px; }
+            QTreeWidget QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+            QTreeWidget QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         """)
         fl.addWidget(self._tree, stretch=1)
 
@@ -272,7 +292,7 @@ class FTPToolModule(ToolModule):
         lnl.setSpacing(2)
         self._local_dir = os.path.expanduser("~/Desktop")
         self._local_path_label = QLabel(self._local_dir)
-        self._local_path_label.setStyleSheet("font-family: Courier; font-size: 11px; color: #333; background: transparent;")
+        self._local_path_label.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', 'SF Mono', 'Menlo', 'Microsoft YaHei', 'Courier New', monospace; font-size: 11px; color: #333; background: transparent;")
         lnl.addWidget(self._local_path_label, stretch=1)
 
         for txt, cmd in [("...", self._browse_local), ("\U0001f504", self._refresh_local), ("\u2b06", self._go_up_local)]:
@@ -297,6 +317,10 @@ class FTPToolModule(ToolModule):
             QTreeWidget { border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; }
             QTreeWidget::item { padding: 2px 4px; }
             QTreeWidget::item:selected { background: #e8f5ee; color: #333; }
+            QTreeWidget QScrollBar:vertical { background: #f0f0f0; border: none; border-radius: 4px; width: 8px; margin: 2px; }
+            QTreeWidget QScrollBar::handle:vertical { background: #c0c0c0; border-radius: 4px; min-height: 30px; }
+            QTreeWidget QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+            QTreeWidget QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         """)
         fl.addWidget(self._local_tree, stretch=1)
 
@@ -618,13 +642,15 @@ class FTPToolModule(ToolModule):
             self._tree.addTopLevelItem(item)
 
         for name, size, date_str in dirs:
-            item = QTreeWidgetItem([f"\U0001f4c1 {name}", self._fmt_size(size), date_str])
+            item = QTreeWidgetItem([name, self._fmt_size(size), date_str])
+            item.setIcon(0, self._ico('folder.png'))
             item.setData(0, Qt.ItemDataRole.UserRole, name)
             item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir")
             self._tree.addTopLevelItem(item)
 
         for name, size, date_str in files:
-            item = QTreeWidgetItem([f"\U0001f4c4 {name}", self._fmt_size(size), date_str])
+            item = QTreeWidgetItem([name, self._fmt_size(size), date_str])
+            item.setIcon(0, self._ico('file.png'))
             item.setData(0, Qt.ItemDataRole.UserRole, name)
             item.setData(0, Qt.ItemDataRole.UserRole + 1, "file")
             self._tree.addTopLevelItem(item)
@@ -674,8 +700,8 @@ class FTPToolModule(ToolModule):
                 is_dir = os.path.isdir(full)
                 size = st.st_size
                 mt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st.st_mtime))
-                icon = "\U0001f4c1 " if is_dir else "\U0001f4c4 "
-                item = QTreeWidgetItem([f"{icon}{name}", self._fmt_size(size) if not is_dir else "", mt])
+                item = QTreeWidgetItem([name, self._fmt_size(size) if not is_dir else "", mt])
+                item.setIcon(0, self._ico('folder.png' if is_dir else 'file.png'))
                 item.setData(0, Qt.ItemDataRole.UserRole, name)
                 item.setData(0, Qt.ItemDataRole.UserRole + 1, "dir" if is_dir else "file")
                 self._local_tree.addTopLevelItem(item)
@@ -924,22 +950,54 @@ class FTPToolModule(ToolModule):
 
         self._srv_log.setReadOnly(False)
         self._srv_log.clear()
-        self._srv_log.appendPlainText(f"FTP 服务器启动: 0.0.0.0:{port}")
+        self._srv_log.appendPlainText(f"{self._ts_now()} [启动] 正在启动 FTP 服务器 0.0.0.0:{port} ...")
         self._srv_log.setReadOnly(True)
+
+        self._srv_queue = queue.Queue()
+        self._srv_timer = QTimer()
+        self._srv_timer.timeout.connect(self._drain_srv_queue)
+        self._srv_timer.start(100)
 
         self._server_thread = threading.Thread(target=self._serve_loop, daemon=True)
         self._server_thread.start()
         logger.info(f"[FTP服务器] 启动: {port}")
 
+    @staticmethod
+    def _ts_now():
+        import datetime
+        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     def _serve_loop(self):
         try:
             self._server_instance.serve_forever()
+        except PermissionError:
+            self._srv_queue.put(f"{self._ts_now()} [错误] 端口需要管理员权限")
+            self._srv_queue.put(f"{self._ts_now()} [提示] 右键以管理员身份运行本程序")
+        except OSError as e:
+            msg = str(e)
+            self._srv_queue.put(f"{self._ts_now()} [错误] {msg}")
+            if "10048" in msg:
+                self._srv_queue.put(f"{self._ts_now()} [提示] 端口已被占用")
+            elif "10013" in msg:
+                self._srv_queue.put(f"{self._ts_now()} [提示] 权限不足，以管理员身份运行")
         except Exception as e:
-            self.app.after(0, lambda: self._srv_log.appendPlainText(f"[错误] {e}"))
+            self._srv_queue.put(f"{self._ts_now()} [错误] {e}")
+
+    def _drain_srv_queue(self):
+        while not self._srv_queue.empty():
+            try:
+                text = self._srv_queue.get_nowait()
+                self._srv_log.setReadOnly(False)
+                self._srv_log.appendPlainText(text)
+                self._srv_log.setReadOnly(True)
+            except queue.Empty:
+                break
 
     def _stop_server(self):
         if hasattr(self, '_server_instance'):
             self._server_instance.close_all()
+        if hasattr(self, '_srv_timer'):
+            self._srv_timer.stop()
         self._srv_toggle_btn.setText("启动服务")
         self._srv_toggle_btn.setStyleSheet(BTN_PRIMARY)
         self._srv_status_label.setText("状态: 已停止")
@@ -949,7 +1007,7 @@ class FTPToolModule(ToolModule):
         self._srv_user_entry.setEnabled(True)
         self._srv_pass_entry.setEnabled(True)
         self._srv_log.setReadOnly(False)
-        self._srv_log.appendPlainText("服务器已停止")
+        self._srv_log.appendPlainText(f"{self._ts_now()} [停止] FTP 服务器已停止")
         self._srv_log.setReadOnly(True)
         logger.info("[FTP服务器] 已停止")
 
@@ -961,6 +1019,5 @@ class FTPToolModule(ToolModule):
     def on_hide(self):
         try:
             self._disconnect()
-            self._stop_server()
         except Exception:
             pass

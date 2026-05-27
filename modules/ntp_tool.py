@@ -22,14 +22,16 @@ import socket
 import struct
 import time
 import threading
+import queue
 import platform
+import subprocess
 
 from PySide6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QPlainTextEdit, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 
 from core.base_module import ToolModule
@@ -101,10 +103,10 @@ def _create_ntp_response(origin_tx_int, origin_tx_frac, version=4):
 
 
 class _NTPServerThread(threading.Thread):
-    def __init__(self, port, log_callback):
+    def __init__(self, port, log_queue):
         super().__init__(daemon=True)
         self.port = int(port)
-        self.log_callback = log_callback
+        self.log_queue = log_queue
         self.sock = None
         self.stop_event = threading.Event()
 
@@ -114,15 +116,50 @@ class _NTPServerThread(threading.Thread):
 
     def run(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            self.sock.bind(("0.0.0.0", self.port))
-        except PermissionError:
-            self.log_callback(f"{self._ts()}  [错误] 绑定端口 {self.port} 需要管理员权限")
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Check admin on Windows
+        if platform.system() == "Windows":
+            try:
+                import ctypes
+                is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+                self.log_queue.put(f"{self._ts()}  [信息] 管理员权限: {'是' if is_admin else '否'}")
+            except Exception:
+                pass
+        bound = False
+        for attempt in range(2):
+            try:
+                self.log_queue.put(f"{self._ts()}  [信息] 正在绑定端口 {self.port} ...")
+                self.sock.bind(("0.0.0.0", self.port))
+                bound = True
+                break
+            except (PermissionError, OSError) as e:
+                errno = getattr(e, 'winerror', 0) or getattr(e, 'errno', 0)
+                self.log_queue.put(f"{self._ts()}  [错误] 绑定失败 (winerror={errno})")
+                # Port occupied or access denied — try stopping w32time on Windows
+                if errno in (10013, 10048) and attempt == 0 and platform.system() == "Windows":
+                    self.log_queue.put(f"{self._ts()}  [信息] 正在停止 Windows 时间服务 ...")
+                    try:
+                        import os
+                        os.system("net stop w32time /y >nul 2>&1")
+                        self.log_queue.put(f"{self._ts()}  [信息] 已停止，重新绑定 ...")
+                        self.sock.close()
+                        time.sleep(2)
+                        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                        continue
+                    except Exception as se:
+                        self.log_queue.put(f"{self._ts()}  [错误] 停止失败: {se}")
+                if errno == 10048:
+                    self.log_queue.put(f"{self._ts()}  [错误] 端口被占用，请更换端口")
+                elif errno == 10013:
+                    self.log_queue.put(f"{self._ts()}  [错误] 端口被系统或安全软件阻止")
+                return
+
+        if not bound:
             return
-        except Exception as e:
-            self.log_callback(f"{self._ts()}  [错误] 绑定失败: {e}")
-            return
-        self.log_callback(f"{self._ts()}  [启动] NTP 服务器正在监听 0.0.0.0:{self.port}")
+
+        self.log_queue.put(f"{self._ts()}  [启动] NTP 服务器正在监听 0.0.0.0:{self.port}")
+
         while not self.stop_event.is_set():
             try:
                 self.sock.settimeout(1.0)
@@ -137,13 +174,13 @@ class _NTPServerThread(threading.Thread):
                     version = (data[0] >> 3) & 0x07
                     client_ts = _ntp_to_unix_seconds(origin_int, origin_frac)
                     client_str = time.strftime("%H:%M:%S", time.localtime(client_ts)) if client_ts > 0 else "N/A"
-                    self.log_callback(f"{self._ts()}  [请求] 来自 {addr[0]}:{addr[1]}  |  客户端发送时间: {client_str}")
+                    self.log_queue.put(f"{self._ts()}  [请求] 来自 {addr[0]}:{addr[1]}  |  客户端发送时间: {client_str}")
                     response = _create_ntp_response(origin_int, origin_frac, version)
                     self.sock.sendto(response, addr)
-                    self.log_callback(f"{self._ts()}  [响应] 已向 {addr[0]}:{addr[1]} 发送时间同步数据")
+                    self.log_queue.put(f"{self._ts()}  [响应] 已向 {addr[0]}:{addr[1]} 发送时间同步数据")
                 except Exception as e:
-                    self.log_callback(f"{self._ts()}  [错误] 处理请求失败: {e}")
-        self.log_callback(f"{self._ts()}  [停止] NTP 服务器已停止")
+                    self.log_queue.put(f"{self._ts()}  [错误] 处理请求失败: {e}")
+        self.log_queue.put(f"{self._ts()}  [停止] NTP 服务器已停止")
 
     def stop(self):
         self.stop_event.set()
@@ -287,7 +324,7 @@ class NTPToolModule(ToolModule):
             QTableWidget {
                 border: 1px solid #e5e5e5; border-radius: 8px;
                 background: #1e1e1e; color: #e0e0e0;
-                font-family: "Courier", monospace; font-size: 12px;
+                font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 12px;
                 padding: 4px;
             }
             QTableWidget::item { padding: 3px 8px; border: none; }
@@ -502,19 +539,45 @@ class NTPToolModule(ToolModule):
             return
         logger.info(f"[NTP服务器] 启动服务, 端口: {port_str}")
         self._log_clear()
-        self._server_thread = _NTPServerThread(int(port_str), self._log)
+        self._log_text.appendPlainText(f"正在启动 NTP 服务器，端口 {port_str} ...")
+        # Thread-safe log queue
+        self._srv_queue = queue.Queue()
+        self._srv_timer = QTimer()
+        self._srv_timer.timeout.connect(self._drain_srv_queue)
+        self._srv_timer.start(100)
+        self._server_thread = _NTPServerThread(int(port_str), self._srv_queue)
         self._server_thread.start()
+        self._log_text.appendPlainText("服务器线程已启动，等待绑定...")
         self._toggle_btn.setText("停止服务")
         self._toggle_btn.setStyleSheet(BTN_DANGER)
         self._status_label.setText("状态: 运行中")
         self._status_label.setStyleSheet(BODY_STYLE + " color: #10a37f;")
         self._port_entry.setEnabled(False)
 
+    def _drain_srv_queue(self):
+        while not self._srv_queue.empty():
+            try:
+                text = self._srv_queue.get_nowait()
+                self._log_text.setReadOnly(False)
+                self._log_text.appendPlainText(text)
+                sb = self._log_text.verticalScrollBar()
+                sb.setValue(sb.maximum())
+                self._log_text.setReadOnly(True)
+            except queue.Empty:
+                break
+
     def _stop(self):
         logger.info("[NTP服务器] 停止服务")
         if self._server_thread:
             self._server_thread.stop()
             self._server_thread = None
+        # Drain remaining queue messages before stopping timer
+        if hasattr(self, '_srv_queue'):
+            import time as _t
+            _t.sleep(0.3)  # Let thread finish writing "[停止]"
+            self._drain_srv_queue()
+        if hasattr(self, '_srv_timer'):
+            self._srv_timer.stop()
         self._toggle_btn.setText("启动服务")
         self._toggle_btn.setStyleSheet(BTN_PRIMARY)
         self._status_label.setText("状态: 已停止")
@@ -522,13 +585,14 @@ class NTPToolModule(ToolModule):
         self._port_entry.setEnabled(True)
 
     def _log(self, text):
-        def _up():
-            self._log_text.setReadOnly(False)
-            self._log_text.appendPlainText(text)
-            sb = self._log_text.verticalScrollBar()
-            sb.setValue(sb.maximum())
-            self._log_text.setReadOnly(True)
-        self.app.after(0, _up)
+        QTimer.singleShot(0, lambda t=text: self._log_safe(t))
+
+    def _log_safe(self, text):
+        self._log_text.setReadOnly(False)
+        self._log_text.appendPlainText(text)
+        sb = self._log_text.verticalScrollBar()
+        sb.setValue(sb.maximum())
+        self._log_text.setReadOnly(True)
 
     def _log_clear(self):
         self._log_text.setReadOnly(False)
