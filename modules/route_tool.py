@@ -150,6 +150,25 @@ def _mask_from_prefix_line(line):
     return ""
 
 
+def _windows_gateway_from_powershell(iface):
+    if _os() != "Windows" or not iface:
+        return ""
+    ps = (
+        "$iface = " + json.dumps(str(iface), ensure_ascii=False) + "; "
+        "$cfg = Get-NetIPConfiguration -InterfaceAlias $iface -ErrorAction SilentlyContinue; "
+        "$gw = [string](@($cfg.IPv4DefaultGateway.NextHop | "
+        "Where-Object { $_ -and $_ -ne '0.0.0.0' } | Select-Object -First 1)[0]); "
+        "if ($gw) { $gw }"
+    )
+    try:
+        result = _run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], timeout=5)
+        if result.returncode == 0:
+            return _extract_ipv4(result.stdout)
+    except Exception:
+        logger.exception(f"[系统网络] PowerShell 查询 Windows 网关失败: iface={iface}")
+    return ""
+
+
 
 
 class _BackgroundTask(QThread):
@@ -1071,14 +1090,21 @@ class RouteToolModule(ToolModule):
                         current = {}
                 if current.get("ip"):
                     rows.append((current["ip"], "", gw))
+                if rows and gw:
+                    rows = [(ip, mask, row_gw or gw) for ip, mask, row_gw in rows]
+                if rows and not any(row_gw for _, _, row_gw in rows):
+                    gw = _windows_gateway_from_powershell(iface)
+                    if gw:
+                        rows = [(ip, mask, gw) for ip, mask, _ in rows]
                 if rows:
-                    logger.info(f"[系统网络] 网卡 IP 加载完成(netsh): iface={iface}, count={len(rows)}")
+                    logger.info(f"[系统网络] 网卡 IP 加载完成(netsh): iface={iface}, count={len(rows)}, gw={gw or '-'}")
                     return rows
 
             ps = (
                 "$iface = " + json.dumps(str(iface), ensure_ascii=False) + "; "
-                "$gw = (Get-NetRoute -InterfaceAlias $iface -DestinationPrefix '0.0.0.0/0' "
-                "| Select-Object -First 1).NextHop; "
+                "$cfg = Get-NetIPConfiguration -InterfaceAlias $iface -ErrorAction SilentlyContinue; "
+                "$gw = [string](@($cfg.IPv4DefaultGateway.NextHop | "
+                "Where-Object { $_ -and $_ -ne '0.0.0.0' } | Select-Object -First 1)[0]); "
                 "Get-NetIPAddress -InterfaceAlias $iface -AddressFamily IPv4 | "
                 "Where-Object { $_.IPAddress -ne '127.0.0.1' -and $_.IPAddress -notlike '169.254.*' } | "
                 "Select-Object IPAddress, PrefixLength, @{Name='Gateway';Expression={$gw}} | "
@@ -1120,6 +1146,14 @@ class RouteToolModule(ToolModule):
                     if ip and not _is_link_local_ipv4(ip):
                         rows.append((ip, current.get("mask", ""), gw))
                     current = {}
+            if current.get("ip") and not _is_link_local_ipv4(current.get("ip", "")):
+                rows.append((current.get("ip", ""), current.get("mask", ""), gw))
+            if rows and gw:
+                rows = [(ip, mask, row_gw or gw) for ip, mask, row_gw in rows]
+            if rows and not any(row_gw for _, _, row_gw in rows):
+                gw = _windows_gateway_from_powershell(iface)
+                if gw:
+                    rows = [(ip, mask, gw) for ip, mask, _ in rows]
             return rows
 
         # macOS
