@@ -1,8 +1,11 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-FTP Tool module - combined FTP/SFTP client and FTP server (PySide6 edition).
+FTP/SFTP client and FTP server module.
 """
 
 import os
@@ -10,6 +13,9 @@ import time
 import threading
 import stat
 import ftplib
+import socket
+import platform
+import subprocess
 
 from PySide6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -17,7 +23,7 @@ from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QHeaderView,
     QDialog, QProgressBar, QFileDialog, QMessageBox,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QIcon
 
 import queue
@@ -30,12 +36,31 @@ except ImportError:
 from core.base_module import ToolModule
 from core.app import BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, BTN_MODE_ACTIVE, BTN_MODE_INACTIVE, set_card_style, set_transparent_bg, set_dark_output
 from core.app import H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE
+from core.icons import icon as drawn_icon
 from core.logger import logger
+
 
 class FTPToolModule(ToolModule):
     name = "FTP \u5de5\u5177"
-    icon = "\U0001f4c1"
+    icon = "ftp"
     description = "FTP/SFTP \u5ba2\u6237\u7aef\u8fde\u63a5\u8fdc\u7a0b\u670d\u52a1\u5668\uff0c\u6216\u5728\u672c\u5730\u542f\u52a8 FTP \u670d\u52a1\u4f9b\u5c40\u57df\u7f51\u6587\u4ef6\u5171\u4eab\u3002"
+
+    @staticmethod
+    def _default_dir():
+        home = os.path.expanduser("~")
+        if os.name == "nt":
+            home = os.environ.get("USERPROFILE") or home
+        candidates = [
+            os.path.join(home, "Desktop"),
+            os.path.join(home, "桌面"),
+            os.path.join(home, "Documents"),
+            home,
+            os.getcwd(),
+        ]
+        for path in candidates:
+            if path and os.path.isdir(path):
+                return os.path.normpath(path)
+        return os.path.abspath(os.getcwd())
 
     @staticmethod
     def _ico(name):
@@ -82,7 +107,9 @@ class FTPToolModule(ToolModule):
         self._mode_btns = {}
         mb_wrapper = QWidget()
         mb_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        mb_wrapper.setStyleSheet("background: #f0f0f0; border-radius: 8px;")
+        mb_wrapper.setStyleSheet(
+            "background: #eef0f2; border: 1px solid #e2e5e9; border-radius: 8px;"
+        )
         mbl = QHBoxLayout(mb_wrapper)
         mbl.setContentsMargins(4, 4, 4, 4)
         mbl.setSpacing(4)
@@ -122,6 +149,7 @@ class FTPToolModule(ToolModule):
         self._sftp = None
         self._current_remote_dir = "/"
         self._server_thread = None
+        self._server_instance = None
         self._xfer_cancel = False
 
     # ── Client UI ──
@@ -139,7 +167,9 @@ class FTPToolModule(ToolModule):
         self._proto_btns = {}
         pw = QWidget()
         pw.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        pw.setStyleSheet("background: #f0f0f0; border-radius: 6px;")
+        pw.setStyleSheet(
+            "background: #eef0f2; border: 1px solid #e2e5e9; border-radius: 6px;"
+        )
         pwl = QHBoxLayout(pw)
         pwl.setContentsMargins(4, 4, 4, 4)
         pwl.setSpacing(2)
@@ -193,13 +223,13 @@ class FTPToolModule(ToolModule):
         conn.addWidget(self._connect_btn, 1, 4)
 
         self._conn_status = QLabel("状态: 未连接")
-        self._conn_status.setStyleSheet(HINT_STYLE + " color: #999;")
+        self._conn_status.setStyleSheet(HINT_STYLE)
         fl.addWidget(self._conn_status)
 
         # Remote browser header
         fl.addSpacing(4)
         rh = QLabel("远程文件")
-        rh.setStyleSheet(H3_STYLE + " color: #666;")
+        rh.setStyleSheet(H3_STYLE)
         fl.addWidget(rh)
 
         nav = QWidget()
@@ -208,13 +238,15 @@ class FTPToolModule(ToolModule):
         nl.setContentsMargins(0, 0, 0, 0)
         nl.setSpacing(2)
         self._path_label = QLabel("/")
-        self._path_label.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', 'SF Mono', 'Menlo', 'Microsoft YaHei', 'Courier New', monospace; font-size: 11px; color: #333; background: transparent;")
+        self._path_label.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', 'SF Mono', 'Menlo', 'Microsoft YaHei', 'Courier New', monospace; font-size: 11px; color: #697281; background: transparent;")
         nl.addWidget(self._path_label, stretch=1)
 
-        for txt, cmd in [("\U0001f504", self._refresh_dir), ("\u2b06", self._go_up)]:
-            b = QPushButton(txt)
+        for icon_name, cmd in [("refresh", self._refresh_dir), ("up", self._go_up)]:
+            b = QPushButton()
+            b.setIcon(drawn_icon(icon_name, 16, fg="#ffffff", accent="#ffffff", bg="#9aa0a6"))
+            b.setIconSize(QSize(16, 16))
             b.setFixedSize(28, 20)
-            b.setStyleSheet("background: #e5e5e5; border: none; border-radius: 4px; font-size: 12px;")
+            b.setStyleSheet("background: #ffffff; border: 1px solid #dfe3e8; border-radius: 4px; font-size: 12px; color: #394150;")
             b.clicked.connect(cmd)
             nl.addWidget(b)
         fl.addWidget(nav)
@@ -230,12 +262,12 @@ class FTPToolModule(ToolModule):
         self._tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self._tree.itemDoubleClicked.connect(self._on_tree_double_click)
         self._tree.setStyleSheet("""
-            QTreeWidget { border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; }
+            QTreeWidget { border: 1px solid #dfe3e8; border-radius: 6px; font-size: 11px; background: #ffffff; color: #20242a; alternate-background-color: #f8fafb; }
             QTreeWidget::item { padding: 2px 4px; }
-            QTreeWidget::item:selected { background: #e8f5ee; color: #333; }
-            QTreeWidget QScrollBar:vertical { background: #f0f0f0; border: none; border-radius: 4px; width: 8px; margin: 2px; }
-            QTreeWidget QScrollBar::handle:vertical { background: #c0c0c0; border-radius: 4px; min-height: 30px; }
-            QTreeWidget QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+            QTreeWidget::item:selected { background: #e7f5f1; color: #0b745c; }
+            QTreeWidget QScrollBar:vertical { background: #f2f3f4; border: none; border-radius: 4px; width: 8px; margin: 2px; }
+            QTreeWidget QScrollBar::handle:vertical { background: #cfd5dc; border-radius: 4px; min-height: 30px; }
+            QTreeWidget QScrollBar::handle:vertical:hover { background: #aeb6c0; }
             QTreeWidget QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         """)
         fl.addWidget(self._tree, stretch=1)
@@ -246,7 +278,7 @@ class FTPToolModule(ToolModule):
         sep.setFrameShape(QFrame.Shape.NoFrame)
         sep.setLineWidth(0)
         sep.setFixedHeight(1)
-        sep.setStyleSheet("background: #e5e5e5; border: none;")
+        sep.setStyleSheet("background: #e1e5e9; border: none;")
         fl.addWidget(sep)
 
         btn_row = QWidget()
@@ -255,13 +287,17 @@ class FTPToolModule(ToolModule):
         brl.setContentsMargins(0, 4, 0, 0)
         brl.setSpacing(8)
 
-        self._upload_btn = QPushButton("\u2b06 上传到远程")
+        self._upload_btn = QPushButton("上传到远程")
+        self._upload_btn.setIcon(drawn_icon("upload", 16, fg="#ffffff", accent="#ffffff"))
+        self._upload_btn.setIconSize(QSize(16, 16))
         self._upload_btn.setStyleSheet(BTN_PRIMARY)
         self._upload_btn.setFixedHeight(28)
         self._upload_btn.clicked.connect(self._upload_file)
         brl.addWidget(self._upload_btn)
 
-        self._download_btn = QPushButton("\u2b07 下载到本地")
+        self._download_btn = QPushButton("下载到本地")
+        self._download_btn.setIcon(drawn_icon("download", 16, fg="#ffffff", accent="#ffffff"))
+        self._download_btn.setIconSize(QSize(16, 16))
         self._download_btn.setStyleSheet("""
             QPushButton { background: #3b82f6; color: white; border: none;
             border-radius: 8px; padding: 6px 18px; font-size: 13px; font-weight: bold; }
@@ -271,7 +307,9 @@ class FTPToolModule(ToolModule):
         self._download_btn.clicked.connect(self._download_file)
         brl.addWidget(self._download_btn)
 
-        self._delete_btn = QPushButton("\U0001f5d1 删除远程")
+        self._delete_btn = QPushButton("删除远程")
+        self._delete_btn.setIcon(drawn_icon("delete", 16, fg="#ffffff", accent="#ffffff"))
+        self._delete_btn.setIconSize(QSize(16, 16))
         self._delete_btn.setStyleSheet(BTN_DANGER)
         self._delete_btn.setFixedHeight(28)
         self._delete_btn.clicked.connect(self._delete_file)
@@ -282,7 +320,7 @@ class FTPToolModule(ToolModule):
         # Local browser
         fl.addSpacing(4)
         ll = QLabel("本地文件")
-        ll.setStyleSheet(H3_STYLE + " color: #666;")
+        ll.setStyleSheet(H3_STYLE)
         fl.addWidget(ll)
 
         local_nav = QWidget()
@@ -290,15 +328,18 @@ class FTPToolModule(ToolModule):
         lnl = QHBoxLayout(local_nav)
         lnl.setContentsMargins(0, 0, 0, 0)
         lnl.setSpacing(2)
-        self._local_dir = os.path.expanduser("~/Desktop")
+        self._local_dir = self._default_dir()
         self._local_path_label = QLabel(self._local_dir)
-        self._local_path_label.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', 'SF Mono', 'Menlo', 'Microsoft YaHei', 'Courier New', monospace; font-size: 11px; color: #333; background: transparent;")
+        self._local_path_label.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', 'SF Mono', 'Menlo', 'Microsoft YaHei', 'Courier New', monospace; font-size: 11px; color: #697281; background: transparent;")
         lnl.addWidget(self._local_path_label, stretch=1)
 
-        for txt, cmd in [("...", self._browse_local), ("\U0001f504", self._refresh_local), ("\u2b06", self._go_up_local)]:
-            b = QPushButton(txt)
+        for text, icon_name, cmd in [("...", None, self._browse_local), ("", "refresh", self._refresh_local), ("", "up", self._go_up_local)]:
+            b = QPushButton(text)
+            if icon_name:
+                b.setIcon(drawn_icon(icon_name, 16, fg="#ffffff", accent="#ffffff", bg="#9aa0a6"))
+                b.setIconSize(QSize(16, 16))
             b.setFixedSize(28, 20)
-            b.setStyleSheet("background: #e5e5e5; border: none; border-radius: 4px; font-size: 12px;")
+            b.setStyleSheet("background: #ffffff; border: 1px solid #dfe3e8; border-radius: 4px; font-size: 12px; color: #394150;")
             b.clicked.connect(cmd)
             lnl.addWidget(b)
         fl.addWidget(local_nav)
@@ -314,12 +355,12 @@ class FTPToolModule(ToolModule):
         self._local_tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self._local_tree.itemDoubleClicked.connect(self._on_local_double_click)
         self._local_tree.setStyleSheet("""
-            QTreeWidget { border: 1px solid #e5e5e5; border-radius: 6px; font-size: 11px; }
+            QTreeWidget { border: 1px solid #dfe3e8; border-radius: 6px; font-size: 11px; background: #ffffff; color: #20242a; alternate-background-color: #f8fafb; }
             QTreeWidget::item { padding: 2px 4px; }
-            QTreeWidget::item:selected { background: #e8f5ee; color: #333; }
-            QTreeWidget QScrollBar:vertical { background: #f0f0f0; border: none; border-radius: 4px; width: 8px; margin: 2px; }
-            QTreeWidget QScrollBar::handle:vertical { background: #c0c0c0; border-radius: 4px; min-height: 30px; }
-            QTreeWidget QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+            QTreeWidget::item:selected { background: #e7f5f1; color: #0b745c; }
+            QTreeWidget QScrollBar:vertical { background: #f2f3f4; border: none; border-radius: 4px; width: 8px; margin: 2px; }
+            QTreeWidget QScrollBar::handle:vertical { background: #cfd5dc; border-radius: 4px; min-height: 30px; }
+            QTreeWidget QScrollBar::handle:vertical:hover { background: #aeb6c0; }
             QTreeWidget QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
         """)
         fl.addWidget(self._local_tree, stretch=1)
@@ -332,7 +373,7 @@ class FTPToolModule(ToolModule):
         set_dark_output(self._clog)
         fl.addWidget(self._clog)
 
-        self._refresh_local()
+        self._local_loaded = False
 
     # ── Server UI ──
 
@@ -368,11 +409,11 @@ class FTPToolModule(ToolModule):
         drl.setContentsMargins(0, 0, 0, 0)
         drl.setSpacing(8)
         drl.addWidget(self._lbl("根目录:", 60))
-        self._srv_dir_entry = QLineEdit(os.path.expanduser("~/Desktop"))
+        self._srv_dir_entry = QLineEdit(self._default_dir())
         self._srv_dir_entry.setMinimumHeight(32)
         drl.addWidget(self._srv_dir_entry, stretch=1)
         browse_btn = QPushButton("浏览")
-        browse_btn.setStyleSheet("background: #e5e5e5; border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px;")
+        browse_btn.setStyleSheet(BTN_SECONDARY)
         browse_btn.clicked.connect(self._browse_srv_dir)
         drl.addWidget(browse_btn)
         fl.addWidget(dr)
@@ -408,7 +449,7 @@ class FTPToolModule(ToolModule):
         self._srv_toggle_btn.clicked.connect(self._toggle_server)
         trl.addWidget(self._srv_toggle_btn)
         self._srv_status_label = QLabel("状态: 已停止")
-        self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #666;")
+        self._srv_status_label.setStyleSheet(BODY_STYLE)
         trl.addWidget(self._srv_status_label)
         trl.addStretch(1)
         fl.addWidget(tr)
@@ -500,7 +541,7 @@ class FTPToolModule(ToolModule):
         port_str = self._port_entry.text().strip()
         for v, btn in self._proto_btns.items():
             btn_style = btn.styleSheet()
-            if "#10a37f" in btn_style:
+            if "#11a37f" in btn_style:
                 proto = v
                 break
         else:
@@ -515,13 +556,15 @@ class FTPToolModule(ToolModule):
         if proto == "sftp" and paramiko is None:
             QMessageBox.critical(self.app, "错误", "SFTP 需要 paramiko 库，请执行: pip3 install paramiko")
             return
-        self._connect_btn.setEnabled(False)
-        self._connect_btn.setText("连接中...")
-        threading.Thread(target=self._do_connect, args=(host, int(port_str), proto), daemon=True).start()
-
-    def _do_connect(self, host, port, proto):
         user = self._user_entry.text().strip()
         pwd = self._pass_entry.text()
+        self._connect_btn.setEnabled(False)
+        self._connect_btn.setText("连接中...")
+        threading.Thread(target=self._do_connect,
+                         args=(host, int(port_str), proto, user, pwd),
+                         daemon=True).start()
+
+    def _do_connect(self, host, port, proto, user, pwd):
         ts = self._ts()
         try:
             if proto == "ftp":
@@ -576,7 +619,7 @@ class FTPToolModule(ToolModule):
         self._connect_btn.setEnabled(True)
         addr = f"{self._host_entry.text().strip()}:{self._port_entry.text().strip()}"
         self._conn_status.setText(f"状态: 已连接 -> {addr}")
-        self._conn_status.setStyleSheet(HINT_STYLE + " color: #10a37f;")
+        self._conn_status.setStyleSheet(HINT_STYLE + " color: #11a37f;")
 
     def _on_disconnected(self):
         self._connect_btn.setText("连接")
@@ -591,6 +634,7 @@ class FTPToolModule(ToolModule):
     def _refresh_dir(self):
         if self._client is None:
             return
+        logger.info(f"[FTP客户端] 刷新远程目录: {self._current_remote_dir}")
         threading.Thread(target=self._do_list_dir, daemon=True).start()
 
     def _do_list_dir(self):
@@ -625,6 +669,7 @@ class FTPToolModule(ToolModule):
         self._tree.clear()
         if error:
             self._log(f"{self._ts()}  [错误] 列出目录失败: {error}")
+            logger.error(f"[FTP客户端] 远程目录刷新失败: path={self._current_remote_dir}, error={error}")
             return
 
         dirs, files = [], []
@@ -656,6 +701,7 @@ class FTPToolModule(ToolModule):
             self._tree.addTopLevelItem(item)
 
         self._path_label.setText(self._current_remote_dir)
+        logger.info(f"[FTP客户端] 远程目录刷新完成: path={self._current_remote_dir}, dirs={len(dirs)}, files={len(files)}")
 
     def _on_tree_double_click(self, item):
         iid = item.data(0, Qt.ItemDataRole.UserRole)
@@ -668,12 +714,14 @@ class FTPToolModule(ToolModule):
                 self._current_remote_dir = "/" + iid
             else:
                 self._current_remote_dir = self._current_remote_dir.rstrip("/") + "/" + iid
+            logger.info(f"[FTP客户端] 进入远程目录: {self._current_remote_dir}")
             self._refresh_dir()
 
     def _go_up(self):
         if self._current_remote_dir and self._current_remote_dir != "/":
             parent_dir = os.path.dirname(self._current_remote_dir.rstrip("/"))
             self._current_remote_dir = parent_dir if parent_dir else "/"
+            logger.info(f"[FTP客户端] 返回远程上级目录: {self._current_remote_dir}")
             self._refresh_dir()
 
     # ── Local file browser ──
@@ -683,13 +731,17 @@ class FTPToolModule(ToolModule):
         if d:
             self._local_dir = d
             self._local_path_label.setText(d)
+            logger.info(f"[FTP客户端] 切换本地目录: {d}")
             self._refresh_local()
 
     def _refresh_local(self):
         self._local_tree.clear()
+        if not os.path.isdir(self._local_dir):
+            self._local_dir = self._default_dir()
         try:
             entries = [e for e in os.listdir(self._local_dir) if not e.startswith(".")]
         except Exception:
+            logger.exception(f"[FTP客户端] 刷新本地目录失败: {self._local_dir}")
             return
 
         entries.sort(key=lambda x: x.lower())
@@ -708,6 +760,7 @@ class FTPToolModule(ToolModule):
             except Exception:
                 pass
         self._local_path_label.setText(self._local_dir)
+        logger.info(f"[FTP客户端] 本地目录刷新完成: {self._local_dir}, count={self._local_tree.topLevelItemCount()}")
 
     def _on_local_double_click(self, item):
         name = item.data(0, Qt.ItemDataRole.UserRole)
@@ -715,6 +768,7 @@ class FTPToolModule(ToolModule):
         if tag == "dir":
             self._local_dir = os.path.join(self._local_dir, name)
             self._local_path_label.setText(self._local_dir)
+            logger.info(f"[FTP客户端] 进入本地目录: {self._local_dir}")
             self._refresh_local()
 
     def _go_up_local(self):
@@ -722,6 +776,7 @@ class FTPToolModule(ToolModule):
         if parent_dir and parent_dir != self._local_dir:
             self._local_dir = parent_dir
             self._local_path_label.setText(self._local_dir)
+            logger.info(f"[FTP客户端] 返回本地上级目录: {self._local_dir}")
             self._refresh_local()
 
     # ── Upload / Download / Delete ──
@@ -737,10 +792,12 @@ class FTPToolModule(ToolModule):
         name = item.data(0, Qt.ItemDataRole.UserRole)
         tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if tag == "dir":
+            logger.warning(f"[FTP客户端] 上传失败: 暂不支持文件夹 {name}")
             QMessageBox.warning(self.app, "提示", "暂不支持上传文件夹")
             return
         local_path = os.path.join(self._local_dir, name)
         self._start_transfer("upload", local_path, name)
+        logger.info(f"[FTP客户端] 准备上传: local={local_path}, remote_name={name}")
 
     def _download_file(self):
         if self._client is None:
@@ -753,10 +810,12 @@ class FTPToolModule(ToolModule):
         name = item.data(0, Qt.ItemDataRole.UserRole)
         tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if tag == "dir":
+            logger.warning(f"[FTP客户端] 下载失败: 暂不支持文件夹 {name}")
             QMessageBox.warning(self.app, "提示", "暂不支持下载文件夹")
             return
         local_path = os.path.join(self._local_dir, name)
         self._start_transfer("download", local_path, name)
+        logger.info(f"[FTP客户端] 准备下载: remote_name={name}, local={local_path}")
 
     def _delete_file(self):
         if self._client is None:
@@ -772,7 +831,9 @@ class FTPToolModule(ToolModule):
         else:
             reply = QMessageBox.question(self.app, "确认", f"确定要删除远程文件 '{name}' 吗?")
         if reply != QMessageBox.StandardButton.Yes:
+            logger.info(f"[FTP客户端] 用户取消删除远程: {name}")
             return
+        logger.info(f"[FTP客户端] 准备删除远程: name={name}, is_dir={tag == 'dir'}")
         threading.Thread(target=self._do_delete, args=(name, tag == "dir"), daemon=True).start()
 
     def _do_delete(self, name, is_dir):
@@ -790,8 +851,10 @@ class FTPToolModule(ToolModule):
                 else:
                     self._sftp.remove(remote_path)
             self.app.after(0, self._log, f"{ts}  [删除] {name} 删除成功")
+            logger.info(f"[FTP客户端] 远程删除成功: {remote_path}")
             self.app.after(0, self._refresh_dir)
         except Exception as e:
+            logger.exception(f"[FTP客户端] 远程删除失败: {remote_path}")
             self.app.after(0, self._log, f"{ts}  [错误] 删除失败: {e}")
 
     # ── Transfer dialog ──
@@ -842,7 +905,7 @@ class FTPToolModule(ToolModule):
         self._xfer_start = time.time()
         try:
             total = os.path.getsize(local_path)
-            self._xfer_bar.setMaximum(100)
+            self.app.after(0, self._xfer_bar.setMaximum, 100)
             done = [0]
 
             if isinstance(self._client, ftplib.FTP):
@@ -865,10 +928,14 @@ class FTPToolModule(ToolModule):
                 self._sftp.put(local_path, remote_path, callback=cb)
 
             self.app.after(0, self._log, f"{ts}  [上传] {os.path.basename(local_path)} 完成")
+            logger.info(f"[FTP客户端] 上传完成: local={local_path}, remote={remote_path}, size={total}")
             self.app.after(0, self._refresh_dir)
         except Exception as e:
             if str(e) != "cancelled":
+                logger.exception(f"[FTP客户端] 上传失败: local={local_path}, remote={remote_path}")
                 self.app.after(0, self._log, f"{ts}  [错误] 上传失败: {e}")
+            else:
+                logger.info(f"[FTP客户端] 上传取消: local={local_path}, remote={remote_path}")
         finally:
             self.app.after(0, dlg.close)
 
@@ -881,7 +948,7 @@ class FTPToolModule(ToolModule):
         else:
             total = self._sftp.stat(remote_path).st_size
 
-        self._xfer_bar.setMaximum(100)
+        self.app.after(0, self._xfer_bar.setMaximum, 100)
         done = [0]
 
         try:
@@ -904,10 +971,14 @@ class FTPToolModule(ToolModule):
                 self._sftp.get(remote_path, local_path, callback=cb)
 
             self.app.after(0, self._log, f"{ts}  [下载] {os.path.basename(remote_path)} 完成")
+            logger.info(f"[FTP客户端] 下载完成: remote={remote_path}, local={local_path}, size={total}")
             self.app.after(0, self._refresh_local)
         except Exception as e:
             if str(e) != "cancelled":
+                logger.exception(f"[FTP客户端] 下载失败: remote={remote_path}, local={local_path}")
                 self.app.after(0, self._log, f"{ts}  [错误] 下载失败: {e}")
+            else:
+                logger.info(f"[FTP客户端] 下载取消: remote={remote_path}, local={local_path}")
         finally:
             self.app.after(0, dlg.close)
 
@@ -929,20 +1000,42 @@ class FTPToolModule(ToolModule):
             QMessageBox.warning(self.app, "提示", "请输入有效端口号")
             return
         port = int(port_str)
-        root_dir = self._srv_dir_entry.text().strip() or os.path.expanduser("~/Desktop")
+        root_dir = os.path.normpath(self._srv_dir_entry.text().strip() or self._default_dir())
+        self._srv_dir_entry.setText(root_dir)
         user = self._srv_user_entry.text().strip() or "admin"
         pwd = self._srv_pass_entry.text() or "123456"
 
-        authorizer = DummyAuthorizer()
-        authorizer.add_user(user, pwd, root_dir, perm="elradfmw")
-        handler = FTPHandler
-        handler.authorizer = authorizer
-        self._server_instance = FTPServer(("0.0.0.0", port), handler)
+        try:
+            self._close_server_instance()
+            if not os.path.isdir(root_dir):
+                QMessageBox.warning(self.app, "提示", f"FTP 根目录不存在:\n{root_dir}")
+                self._srv_dir_entry.setText(self._default_dir())
+                return
+            release_notes = self._ensure_port_free(port)
+            authorizer = DummyAuthorizer()
+            authorizer.add_user(user, pwd, root_dir, perm="elradfmw")
+            handler = FTPHandler
+            handler.authorizer = authorizer
+            self._server_instance = FTPServer(("0.0.0.0", port), handler)
+        except Exception as e:
+            if self._server_instance is not None:
+                try:
+                    self._server_instance.close_all()
+                except Exception:
+                    pass
+            self._server_instance = None
+            self._srv_status_label.setText(f"状态: 启动失败 - {e}")
+            self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #ffb4b4;")
+            self._srv_log.setReadOnly(False)
+            self._srv_log.appendPlainText(f"{self._ts_now()} [错误] 启动失败: {e}")
+            self._srv_log.setReadOnly(True)
+            logger.error(f"[FTP服务器] 启动失败: {e}")
+            return
 
         self._srv_toggle_btn.setText("停止服务")
         self._srv_toggle_btn.setStyleSheet(BTN_DANGER)
         self._srv_status_label.setText("状态: 运行中")
-        self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #10a37f;")
+        self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #11a37f;")
         self._srv_port_entry.setEnabled(False)
         self._srv_dir_entry.setEnabled(False)
         self._srv_user_entry.setEnabled(False)
@@ -951,7 +1044,11 @@ class FTPToolModule(ToolModule):
         self._srv_log.setReadOnly(False)
         self._srv_log.clear()
         self._srv_log.appendPlainText(f"{self._ts_now()} [启动] 正在启动 FTP 服务器 0.0.0.0:{port} ...")
+        for note in release_notes:
+            self._srv_log.appendPlainText(f"{self._ts_now()} {note}")
+        self._srv_log.appendPlainText(f"{self._ts_now()} [目录] {root_dir}")
         self._srv_log.setReadOnly(True)
+        logger.info(f"[FTP服务器] 启动配置: port={port}, root={root_dir}, user={user}")
 
         self._srv_queue = queue.Queue()
         self._srv_timer = QTimer()
@@ -969,7 +1066,10 @@ class FTPToolModule(ToolModule):
 
     def _serve_loop(self):
         try:
-            self._server_instance.serve_forever()
+            self._server_instance.serve_forever(
+                handle_exit=False,
+                worker_processes=1,
+            )
         except PermissionError:
             self._srv_queue.put(f"{self._ts_now()} [错误] 端口需要管理员权限")
             self._srv_queue.put(f"{self._ts_now()} [提示] 右键以管理员身份运行本程序")
@@ -983,6 +1083,99 @@ class FTPToolModule(ToolModule):
         except Exception as e:
             self._srv_queue.put(f"{self._ts_now()} [错误] {e}")
 
+    @staticmethod
+    def _ensure_port_free(port):
+        notes = []
+        for attempt in range(2):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                sock.bind(("0.0.0.0", port))
+                return notes
+            except OSError as e:
+                if attempt == 0 and platform.system() == "Windows":
+                    notes.append(f"[信息] 端口 {port} 被占用，正在尝试自动释放...")
+                    notes.extend(FTPToolModule._release_windows_port(port))
+                    time.sleep(1)
+                    continue
+                raise OSError(f"端口 {port} 已被占用，请停止占用程序或换一个端口 ({e})") from e
+            finally:
+                sock.close()
+        return notes
+
+    @staticmethod
+    def _release_windows_port(port):
+        notes = []
+        startupinfo = None
+        if platform.system() == "Windows":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+
+        def run(cmd):
+            try:
+                return subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    encoding="utf-8",
+                    errors="replace",
+                    startupinfo=startupinfo,
+                )
+            except UnicodeError:
+                return subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=8,
+                    errors="replace",
+                    startupinfo=startupinfo,
+                )
+
+        if port == 21:
+            result = run(["net", "stop", "ftpsvc", "/y"])
+            if result.returncode == 0:
+                notes.append("[信息] 已停止 Windows FTP 服务")
+                logger.info("[FTP服务器] 已停止 Windows FTP 服务释放端口")
+
+        pids = set()
+        result = run(["netstat", "-ano", "-p", "tcp"])
+        current_pid = str(os.getpid())
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            local_addr = parts[1]
+            state = parts[3].upper()
+            pid = parts[-1]
+            if state == "LISTENING" and local_addr.endswith(f":{port}") and pid != current_pid:
+                pids.add(pid)
+
+        for pid in sorted(pids):
+            result = run(["taskkill", "/F", "/PID", pid])
+            if result.returncode == 0:
+                notes.append(f"[信息] 已结束占用端口 {port} 的进程 PID {pid}")
+                logger.info(f"[FTP服务器] 已结束占用端口 {port} 的进程 PID {pid}")
+            else:
+                err = (result.stderr or result.stdout).strip()
+                notes.append(f"[提示] 无法结束 PID {pid}: {err or '权限不足'}")
+                logger.warning(f"[FTP服务器] 无法结束占用端口 {port} 的进程 PID {pid}: {err or '权限不足'}")
+        if not notes:
+            notes.append("[提示] 未找到可自动释放的占用进程")
+        return notes
+
+    def _close_server_instance(self):
+        if self._server_instance is not None:
+            try:
+                self._server_instance.close_all()
+            except Exception:
+                pass
+            self._server_instance = None
+        thread = self._server_thread
+        if thread and thread.is_alive() and threading.current_thread() is not thread:
+            thread.join(timeout=1)
+        self._server_thread = None
+
     def _drain_srv_queue(self):
         while not self._srv_queue.empty():
             try:
@@ -990,18 +1183,23 @@ class FTPToolModule(ToolModule):
                 self._srv_log.setReadOnly(False)
                 self._srv_log.appendPlainText(text)
                 self._srv_log.setReadOnly(True)
+                if "[错误]" in text:
+                    logger.error(f"[FTP服务器] {text}")
+                elif "[提示]" in text:
+                    logger.warning(f"[FTP服务器] {text}")
+                else:
+                    logger.info(f"[FTP服务器] {text}")
             except queue.Empty:
                 break
 
     def _stop_server(self):
-        if hasattr(self, '_server_instance'):
-            self._server_instance.close_all()
+        self._close_server_instance()
         if hasattr(self, '_srv_timer'):
             self._srv_timer.stop()
         self._srv_toggle_btn.setText("启动服务")
         self._srv_toggle_btn.setStyleSheet(BTN_PRIMARY)
         self._srv_status_label.setText("状态: 已停止")
-        self._srv_status_label.setStyleSheet(BODY_STYLE + " color: #666;")
+        self._srv_status_label.setStyleSheet(BODY_STYLE)
         self._srv_port_entry.setEnabled(True)
         self._srv_dir_entry.setEnabled(True)
         self._srv_user_entry.setEnabled(True)
@@ -1015,9 +1213,15 @@ class FTPToolModule(ToolModule):
         d = QFileDialog.getExistingDirectory(self.app, "选择根目录")
         if d:
             self._srv_dir_entry.setText(d)
+            logger.info(f"[FTP服务器] 选择根目录: {d}")
 
     def on_hide(self):
         try:
             self._disconnect()
         except Exception:
             pass
+
+    def on_show(self):
+        if not getattr(self, "_local_loaded", False):
+            self._refresh_local()
+            self._local_loaded = True

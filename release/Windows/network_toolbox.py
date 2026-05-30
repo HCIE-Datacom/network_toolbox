@@ -1,37 +1,44 @@
 #!/usr/bin/env python3
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+Application entry point and single-instance startup guard.
 """
-
-
-"""Network Toolbox - entry point (PySide6 edition)."""
 
 import os
 import sys
+import multiprocessing
 
 # Ensure the project root is in sys.path so 'core' and 'modules' are importable.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QFont
 
 from core.app import NetworkToolboxApp
 from modules import MODULE_REGISTRY
+
+
+def _claim_single_instance(app):
+    server_name = "NetTool.SingleInstance"
+    probe = QLocalSocket()
+    probe.connectToServer(server_name)
+    if probe.waitForConnected(100):
+        probe.close()
+        return False
+
+    QLocalServer.removeServer(server_name)
+    server = QLocalServer(app)
+    if not server.listen(server_name):
+        return False
+    app._single_instance_server = server
+    return True
 
 
 def main():
@@ -50,6 +57,8 @@ def main():
 
     app.setApplicationName("NetTool")
     app.setOrganizationName("NetTool")
+    if not _claim_single_instance(app):
+        sys.exit(0)
 
     window = NetworkToolboxApp(MODULE_REGISTRY)
     window.show()
@@ -58,4 +67,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

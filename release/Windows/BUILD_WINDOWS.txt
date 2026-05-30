@@ -1,0 +1,9 @@
+NetTool Windows build kit
+Version: V100R008C00SPC500
+
+1. Extract this folder on a Windows x64 machine.
+2. Run setup.bat once to install bundled dependencies into python\.
+3. Run build.bat to build the executable.
+4. The output file will be created at dist\NetTool-V100R008C00SPC500.exe.
+
+This build kit includes the embedded Windows Python runtime and offline wheels.

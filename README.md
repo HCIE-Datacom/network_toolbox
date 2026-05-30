@@ -1,31 +1,88 @@
-# NetTool — macOS Network Toolbox
+# NetTool
 
-多功能 macOS 网络工具箱，插件化架构，支持 NTP、FTP/SFTP、Ping/Traceroute/TCPing、子网计算、命令生成、iPerf 带宽测试。
+NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当前版本为 `V100R008C00SPC500`。
 
-## 功能模块
+## 功能
 
-| 模块 | 功能 |
-|------|------|
-| NTP 工具 | NTP 客户端查询 + 本机 NTP 服务 |
-| FTP 工具 | FTP/SFTP 客户端 + FTP 服务端 |
-| PING 测试 | ICMP Ping / Traceroute / TCPing |
-| 子网计算 | 子网划分 + 路由聚合 |
-| 命令生成器 | 模板化批量命令生成，支持内置/自定义模板 |
-| iPerf 带宽测试 | 纯 Python TCP/UDP 带宽测试，支持客户端/服务器模式 |
+| 模块 | 说明 |
+| --- | --- |
+| NTP 工具 | NTP 客户端查询、本机 NTP 服务启动与日志记录 |
+| FTP 工具 | FTP/SFTP 客户端、FTP 服务端、端口占用处理 |
+| PING 测试 | ICMP Ping、Traceroute、TCPing |
+| 子网计算 | 子网划分、CIDR 计算、路由聚合 |
+| 命令生成器 | 基于内置或自定义模板批量生成网络配置命令 |
+| iPerf 带宽测试 | 纯 Python TCP/UDP 带宽测试，支持客户端和服务器模式 |
+| MAC 地址查询 | 基于本地 OUI 数据库查询厂商信息 |
+| 系统网络 | 路由、hosts、网卡 IP 管理等系统网络配置工具 |
+| 运行日志 | 汇总记录各模块运行、操作和错误日志 |
 
-## 运行
+## 版本命名
+
+项目使用 `VxxxRxxxCxxSPCxxx` 格式：
+
+- `V`：主版本，代表架构或产品主线。
+- `R`：发布版本，代表功能发布迭代。
+- `C`：定制版本，默认 `C00`。
+- `SPC`：补丁版本，代表修复和维护版本。
+
+当前版本：`V100R008C00SPC500`。
+
+## 开发运行
+
+建议使用 Python 3.11+。
 
 ```bash
-pip3 install -r requirements.txt
+python3 -m pip install -r requirements.txt
 python3 network_toolbox.py
 ```
 
-或双击 `NetTool.app`。
+macOS 下也可以直接运行开发版：
 
-## 协议
+```bash
+./run_macos_dev.command
+```
 
-GNU General Public License v3.0 — 使用、修改、分发均须保持开源。
+## 打包
 
-## 作者
+macOS 打包产物：
 
-Tang Wenbo (HCIE-Datacom) — © 2026
+```text
+release/macOS/NetTool-V100R008C00SPC500.dmg
+```
+
+Windows 打包产物：
+
+```text
+release/Windows/NetTool-V100R008C00SPC500.exe
+```
+
+Windows 离线构建目录位于 `release/Windows/`，在 Windows x64 机器上执行：
+
+```bat
+setup.bat
+build.bat
+```
+
+`build.bat` 会生成：
+
+```text
+dist\NetTool-V100R008C00SPC500.exe
+```
+
+## 目录结构
+
+```text
+network_toolbox.py       # 程序入口
+core/                    # 主窗口、基础模块、图标、日志
+modules/                 # 各功能模块
+data/                    # 本地数据文件
+templates/               # 命令生成器模板
+release/                 # 发布产物和离线构建目录
+NetTool.spec             # macOS PyInstaller 打包配置
+```
+
+## 作者与协议
+
+- 作者：Tang Wenbo (HCIE-Datacom)
+- 版权：Copyright (C) 2026 Tang Wenbo
+- 协议：GNU General Public License v3.0 or later

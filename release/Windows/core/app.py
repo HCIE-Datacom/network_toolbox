@@ -1,24 +1,16 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+Main window, shared styles, sidebar navigation, and module container.
 """
 
-"""NetworkToolboxApp - main window framework (sidebar + QStackedWidget, PySide6 edition)."""
-
 import os
+import sys
+import threading
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QFrame, QVBoxLayout, QHBoxLayout, QStackedWidget,
@@ -28,6 +20,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QSize, QMetaObject, Slot
 from PySide6.QtGui import QFont, QColor, QIcon, QPalette, QKeySequence
 from core.logger import logger
+from core.icons import icon as drawn_icon
 
 
 def set_card_style(frame: QFrame, border_color="#eeeeee", bg_color="#ffffff"):
@@ -43,8 +36,13 @@ def set_card_style(frame: QFrame, border_color="#eeeeee", bg_color="#ffffff"):
     frame.setMidLineWidth(0)
     # Force stylesheet-only rendering on macOS
     frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+    frame.setObjectName("cardSurface")
     frame.setStyleSheet(
-        f"QFrame {{ background-color: {bg_color}; border: none; border-radius: 12px; }}"
+        "QFrame#cardSurface {"
+        " background-color: #ffffff;"
+        " border: 1px solid #e6e8eb;"
+        " border-radius: 10px;"
+        "}"
     )
 
 
@@ -72,17 +70,18 @@ def set_transparent_bg(widget: QWidget):
 
 BTN_PRIMARY = """
     QPushButton {
-        background: #10a37f; color: #ffffff; border: none;
-        border-radius: 8px; padding: 6px 18px; font-size: 13px; font-weight: bold;
+        background: #11a37f; color: #ffffff; border: none;
+        border-radius: 8px; padding: 7px 18px; font-size: 13px; font-weight: 700;
     }
-    QPushButton:hover { background: #0d8c6d; }
-    QPushButton:disabled { background: #a0d5c7; color: #e0e0e0; }
+    QPushButton:hover { background: #0f9273; }
+    QPushButton:pressed { background: #0b745c; }
+    QPushButton:disabled { background: #b9dfd5; color: rgba(255,255,255,0.82); }
 """
 
 BTN_DANGER = """
     QPushButton {
         background: #dc2626; color: #ffffff; border: none;
-        border-radius: 8px; padding: 6px 18px; font-size: 13px; font-weight: bold;
+        border-radius: 8px; padding: 7px 18px; font-size: 13px; font-weight: 700;
     }
     QPushButton:hover { background: #b91c1c; }
     QPushButton:disabled { background: #f0a0a0; }
@@ -90,42 +89,43 @@ BTN_DANGER = """
 
 BTN_SECONDARY = """
     QPushButton {
-        background: #f5f5f5; color: #333333;
-        border: 1px solid #e5e5e5; border-radius: 8px;
-        padding: 6px 18px; font-size: 13px; font-weight: bold;
+        background: #ffffff; color: #22252a;
+        border: 1px solid #dfe3e8; border-radius: 8px;
+        padding: 7px 18px; font-size: 13px; font-weight: 700;
     }
-    QPushButton:hover { background: #e8e8e8; }
+    QPushButton:hover { background: #f6f7f8; border-color: #cfd5dc; }
 """
 
 BTN_MODE_ACTIVE = """
     QPushButton {
-        background: #10a37f; color: #ffffff; border: none;
-        border-radius: 6px; padding: 4px 16px; font-size: 12px; font-weight: bold;
+        background: #11a37f; color: #ffffff; border: none;
+        border-radius: 7px; padding: 5px 16px; font-size: 12px; font-weight: 700;
     }
-    QPushButton:hover { background: #0d8c6d; }
+    QPushButton:hover { background: #0f9273; }
 """
 
 BTN_MODE_INACTIVE = """
     QPushButton {
-        background: transparent; color: #333333; border: none;
-        border-radius: 6px; padding: 4px 16px; font-size: 12px; font-weight: bold;
+        background: transparent; color: #4b5563; border: none;
+        border-radius: 7px; padding: 5px 16px; font-size: 12px; font-weight: 700;
     }
-    QPushButton:hover { background: #e0e0e0; }
+    QPushButton:hover { background: #ffffff; color: #22252a; }
 """
 
 BTN_NAV_ACTIVE = """
     QPushButton {
-        background: #10a37f; color: #ffffff; border: none;
-        border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: left;
+        background: #ffffff; color: #111827; border: 1px solid #e4e8ec;
+        border-radius: 10px; padding: 9px 12px; font-size: 14px; font-weight: 700; text-align: left;
     }
+    QPushButton:hover { background: #ffffff; }
 """
 
 BTN_NAV_INACTIVE = """
     QPushButton {
-        background: transparent; color: #333333; border: none;
-        border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: left;
+        background: transparent; color: #4f5966; border: 1px solid transparent;
+        border-radius: 10px; padding: 9px 12px; font-size: 14px; font-weight: 700; text-align: left;
     }
-    QPushButton:hover { background: #e8f5ee; }
+    QPushButton:hover { background: #ffffff; color: #111827; }
 """
 
 
@@ -134,18 +134,18 @@ BTN_NAV_INACTIVE = """
 # H1: module title, H2: card/section heading, H3: sub-label
 # Body: form labels, Hint: status/secondary, Mono: code output
 
-H1_STYLE = "font-size: 18px; font-weight: bold; color: #1f1f1f; background: transparent;"
-H2_STYLE = "font-size: 14px; font-weight: bold; color: #333333; background: transparent;"
-H3_STYLE = "font-size: 12px; font-weight: bold; color: #333333; background: transparent;"
-BODY_STYLE = "font-size: 13px; color: #333333; background: transparent;"
-HINT_STYLE = "font-size: 11px; color: #8e8e8e; background: transparent;"
-DESC_STYLE = "font-size: 13px; color: #6b6b6b; background: transparent;"
+H1_STYLE = "font-size: 32px; font-weight: 700; color: #20242a; background: transparent;"
+H2_STYLE = "font-size: 15px; font-weight: 700; color: #22252a; background: transparent; border: none;"
+H3_STYLE = "font-size: 12px; font-weight: 700; color: #394150; background: transparent;"
+BODY_STYLE = "font-size: 13px; color: #394150; background: transparent;"
+HINT_STYLE = "font-size: 11px; color: #8a929d; background: transparent;"
+DESC_STYLE = "font-size: 15px; color: #687385; background: transparent;"
 
 # Shared dark output area style (used by all modules for code/log output)
 DARK_OUTPUT = """
     QPlainTextEdit {
-        border: 1px solid #e5e5e5; border-radius: 8px;
-        background: #1e1e1e; color: #e0e0e0;
+        border: 1px solid #e1e5e9; border-radius: 8px;
+        background: #202020; color: #e8e8e8;
         font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 12px;
         padding: 8px;
     }
@@ -206,37 +206,37 @@ QMainWindow {
 
 /* ---- Sidebar ---- */
 #sidebarCard {
-    background: #ffffff;
-    border: 1px solid #f0f0f0;
-    border-radius: 12px;
+    background: #f3f4f4;
+    border: none;
+    border-radius: 0px;
 }
 
 /* ---- Line Edit ---- */
 QLineEdit {
-    border: 1px solid #e5e5e5;
-    border-radius: 6px;
+    border: 1px solid #dfe3e8;
+    border-radius: 8px;
     padding: 6px 10px;
     font-size: 13px;
     background: #ffffff;
-    color: #333333;
-    selection-background-color: #10a37f;
+    color: #20242a;
+    selection-background-color: #11a37f;
     selection-color: #ffffff;
 }
 QLineEdit:focus {
-    border-color: #10a37f;
+    border-color: #11a37f;
 }
 
 /* ---- Combo Box ---- */
 QComboBox {
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
+    border: 1px solid #dfe3e8;
+    border-radius: 8px;
     padding: 4px 10px;
     font-size: 12px;
-    background: #f0f0f0;
-    color: #333333;
+    background: #ffffff;
+    color: #20242a;
 }
 QComboBox:hover {
-    border-color: #10a37f;
+    border-color: #11a37f;
 }
 QComboBox::drop-down {
     border: none;
@@ -244,41 +244,50 @@ QComboBox::drop-down {
 }
 QComboBox QAbstractItemView {
     background: #ffffff;
-    border: 1px solid #e5e5e5;
+    border: 1px solid #dfe3e8;
     border-radius: 6px;
-    selection-background-color: #10a37f;
-    selection-color: #ffffff;
+    selection-background-color: #e7f5f1;
+    selection-color: #0b745c;
+    color: #20242a;
+    outline: 0;
+}
+QAbstractItemView {
+    background: #ffffff;
+    color: #20242a;
+    selection-background-color: #e7f5f1;
+    selection-color: #0b745c;
+    outline: 0;
 }
 
 /* ---- Checkbox ---- */
 QCheckBox {
     spacing: 6px;
     font-size: 12px;
-    color: #333333;
+    color: #394150;
 }
 QCheckBox::indicator {
     width: 16px;
     height: 16px;
-    border: 1px solid #d1d5db;
+    border: 1px solid #cfd5dc;
     border-radius: 3px;
     background: #ffffff;
 }
 QCheckBox::indicator:checked {
-    background: #10a37f;
-    border-color: #10a37f;
+    background: #11a37f;
+    border-color: #11a37f;
 }
 
 /* ---- Progress Bar ---- */
 QProgressBar {
     border: none;
     border-radius: 4px;
-    background: #f0f0f0;
+    background: #e8ecef;
     height: 8px;
     text-align: center;
     font-size: 10px;
 }
 QProgressBar::chunk {
-    background: #10a37f;
+    background: #11a37f;
     border-radius: 4px;
 }
 
@@ -287,78 +296,78 @@ QMessageBox {
     background: #ffffff;
 }
 QMessageBox QLabel {
-    color: #333333; font-size: 13px;
+    color: #334155; font-size: 13px;
 }
 QMessageBox QPushButton {
-    background: #10a37f; color: #ffffff; border: none;
+    background: #11a37f; color: #ffffff; border: none;
     border-radius: 6px; padding: 6px 24px; font-size: 13px; font-weight: bold;
     min-height: 32px;
 }
 QMessageBox QPushButton:hover {
-    background: #0d8c6d;
+    background: #0f9273;
 }
 QMessageBox QPushButton:pressed {
-    background: #0b7d5e;
+    background: #0b745c;
 }
 QDialogButtonBox QPushButton {
-    background: #10a37f; color: #ffffff; border: none;
+    background: #11a37f; color: #ffffff; border: none;
     border-radius: 6px; padding: 6px 24px; font-size: 13px; font-weight: bold;
     min-height: 32px;
 }
 QDialogButtonBox QPushButton:hover {
-    background: #0d8c6d;
+    background: #0f9273;
 }
 
 /* ---- Context Menu ---- */
 QMenu {
     background: #ffffff;
-    border: 1px solid #e5e5e5;
+    border: 1px solid #d7e7e1;
     border-radius: 8px;
     padding: 4px;
 }
 QMenu::item {
     padding: 6px 32px 6px 16px;
     font-size: 13px;
-    color: #333333;
+    color: #334155;
     border-radius: 4px;
 }
 QMenu::item:selected {
-    background: #e8f5ee;
-    color: #10a37f;
+    background: #e7f5f1;
+    color: #0b745c;
 }
 QMenu::separator {
     height: 1px;
-    background: #e5e5e5;
+    background: #d9e2ec;
     margin: 4px 8px;
 }
 
 /* ---- Table / Tree ---- */
 QTreeWidget {
-    border: 1px solid #e5e5e5;
-    border-radius: 6px;
+    border: 1px solid #dfe3e8;
+    border-radius: 8px;
     background: #ffffff;
-    alternate-background-color: #f9f9f9;
+    alternate-background-color: #f8fafb;
     font-size: 12px;
-    color: #333333;
+    color: #20242a;
 }
 QTreeWidget::item {
     padding: 4px 6px;
 }
 QTreeWidget::item:selected {
-    background: #e8f5ee;
-    color: #333333;
+    background: #e7f5f1;
+    color: #0b745c;
 }
 QTreeWidget::item:hover {
-    background: #f5f5f5;
+    background: #f4f6f7;
 }
 QHeaderView::section {
-    background: #f5f5f5;
+    background: #f7f8f9;
     border: none;
-    border-bottom: 1px solid #e5e5e5;
+    border-bottom: 1px solid #e1e5e9;
     padding: 6px 8px;
     font-size: 12px;
     font-weight: bold;
-    color: #666666;
+    color: #697281;
 }
 """
 
@@ -366,7 +375,7 @@ QHeaderView::section {
 class NetworkToolboxApp(QMainWindow):
     """Plugin-style main window. Reads MODULE_REGISTRY and auto-generates UI."""
 
-    VERSION = "v1.7.0"
+    VERSION = "V100R008C00SPC500"
 
     def __init__(self, module_registry):
         super().__init__()
@@ -375,8 +384,8 @@ class NetworkToolboxApp(QMainWindow):
         self._set_app_icon()
 
         self.setWindowTitle("NetTool")
-        self.resize(1050, 880)
-        self.setMinimumSize(900, 700)
+        self.resize(1040, 820)
+        self.setMinimumSize(900, 640)
         self.setStyleSheet(GLOBAL_QSS)
 
         # Replace native QLineEdit context menu with styled Qt menu
@@ -384,6 +393,7 @@ class NetworkToolboxApp(QMainWindow):
 
         # Thread-safe callback queue for after()
         self._pending_callbacks = []
+        self._pending_callbacks_lock = threading.Lock()
 
         # Central widget holding sidebar + stack
         central = QWidget()
@@ -408,7 +418,8 @@ class NetworkToolboxApp(QMainWindow):
         if logo:
             icon = QIcon(logo)
             self.setWindowIcon(icon)
-            QApplication.instance().setWindowIcon(icon)
+            if not (sys.platform == "darwin" and getattr(sys, "frozen", False)):
+                QApplication.instance().setWindowIcon(icon)
             QApplication.setApplicationName("NetTool")
 
     def _find_icon_file(self):
@@ -478,9 +489,9 @@ class NetworkToolboxApp(QMainWindow):
     def _build_sidebar(self, root_layout, module_registry):
         # Outer wrapper with padding
         sidebar_wrapper = QWidget()
-        sidebar_wrapper.setFixedWidth(232)
+        sidebar_wrapper.setFixedWidth(260)
         wrapper_layout = QHBoxLayout(sidebar_wrapper)
-        wrapper_layout.setContentsMargins(12, 12, 0, 12)
+        wrapper_layout.setContentsMargins(0, 0, 0, 0)
         wrapper_layout.setSpacing(0)
 
         # White card
@@ -490,7 +501,7 @@ class NetworkToolboxApp(QMainWindow):
         sidebar_card.setMidLineWidth(0)
         sidebar_card.setObjectName("sidebarCard")
         card_layout = QVBoxLayout(sidebar_card)
-        card_layout.setContentsMargins(15, 18, 15, 18)
+        card_layout.setContentsMargins(26, 30, 22, 24)
         card_layout.setSpacing(0)
 
         # Logo + Title row
@@ -500,41 +511,43 @@ class NetworkToolboxApp(QMainWindow):
         hr_layout.setContentsMargins(0, 0, 0, 0)
         hr_layout.setSpacing(10)
 
+        logo_lbl = QLabel()
         logo_icon = self._find_icon_file()
-        if logo_icon:
-            logo_lbl = QLabel()
-            logo_lbl.setPixmap(QIcon(logo_icon).pixmap(36, 36))
-            logo_lbl.setFixedSize(36, 36)
-            logo_lbl.setStyleSheet("background: transparent;")
-            hr_layout.addWidget(logo_lbl)
+        logo_lbl.setPixmap(QIcon(logo_icon).pixmap(40, 40) if logo_icon else drawn_icon("app", 40).pixmap(40, 40))
+        logo_lbl.setFixedSize(42, 42)
+        logo_lbl.setStyleSheet("background: transparent;")
+        hr_layout.addWidget(logo_lbl)
 
         title = QLabel("NetTool")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1f1f1f; background: transparent;")
+        title.setStyleSheet("font-size: 22px; font-weight: 800; color: #20242a; background: transparent;")
         hr_layout.addWidget(title)
         hr_layout.addStretch(1)
 
         card_layout.addWidget(header_row)
-        card_layout.addSpacing(15)
+        subtitle = QLabel("Network Toolbox")
+        subtitle.setStyleSheet("font-size: 11px; color: #8a929d; background: transparent; padding-left: 52px;")
+        card_layout.addWidget(subtitle)
+        card_layout.addSpacing(20)
 
         # Separator
         sep1 = QFrame()
         sep1.setFrameShape(QFrame.Shape.NoFrame)
         sep1.setFixedHeight(1)
-        sep1.setStyleSheet("background: #e5e5e5; border: none;")
+        sep1.setStyleSheet("background: #e0e3e7; border: none;")
         card_layout.addWidget(sep1)
-        card_layout.addSpacing(12)
+        card_layout.addSpacing(18)
 
         # Feature list label
         fl = QLabel("功能列表")
-        fl.setStyleSheet("font-size: 11px; color: #8e8e8e; background: transparent;")
+        fl.setStyleSheet("font-size: 11px; color: #a0a7b1; background: transparent; letter-spacing: 0px;")
         card_layout.addWidget(fl)
-        card_layout.addSpacing(8)
+        card_layout.addSpacing(10)
 
         # Nav button area (scrollable if needed)
         self._nav_frame = QWidget()
         nav_layout = QVBoxLayout(self._nav_frame)
         nav_layout.setContentsMargins(0, 0, 0, 0)
-        nav_layout.setSpacing(3)
+        nav_layout.setSpacing(6)
         card_layout.addWidget(self._nav_frame)
 
         self._nav_buttons = []
@@ -546,13 +559,15 @@ class NetworkToolboxApp(QMainWindow):
             btn._module = mod
 
         # Log button
-        log_btn = QPushButton("  📋   运行日志")
+        log_btn = QPushButton("  运行日志")
+        log_btn.setIcon(drawn_icon("log", 22, fg="#8d96a1", accent="#8d96a1", bg="transparent"))
+        log_btn.setIconSize(QSize(22, 22))
         log_btn.setStyleSheet("""
             QPushButton {
-                background: transparent; color: #666666; border: none;
-                border-radius: 6px; padding: 6px 12px; font-size: 12px; text-align: left;
+                background: transparent; color: #4f5966; border: 1px solid transparent;
+                border-radius: 10px; padding: 9px 12px; font-size: 13px; font-weight: 700; text-align: left;
             }
-            QPushButton:hover { background: #e8f5ee; }
+            QPushButton:hover { background: #ffffff; color: #111827; }
         """)
         log_btn.clicked.connect(self._open_log_viewer)
         nav_layout.addWidget(log_btn)
@@ -564,19 +579,19 @@ class NetworkToolboxApp(QMainWindow):
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.NoFrame)
         sep2.setFixedHeight(1)
-        sep2.setStyleSheet("background: #e5e5e5; border: none;")
+        sep2.setStyleSheet("background: #e0e3e7; border: none;")
         card_layout.addWidget(sep2)
         card_layout.addSpacing(10)
 
         # Version
         ver = QLabel(f"NetTool {self.VERSION}")
-        ver.setStyleSheet("font-size: 11px; color: #8e8e8e; background: transparent;")
+        ver.setStyleSheet("font-size: 11px; color: #7d8793; background: transparent;")
         card_layout.addWidget(ver)
         card_layout.addSpacing(2)
 
         # Copyright
         cr = QLabel("\u00a9 2026 Tang Wenbo. All rights reserved.")
-        cr.setStyleSheet("font-size: 9px; color: #b0b0b0; background: transparent;")
+        cr.setStyleSheet("font-size: 9px; color: #a0a7b1; background: transparent;")
         card_layout.addWidget(cr)
 
         wrapper_layout.addWidget(sidebar_card)
@@ -584,23 +599,25 @@ class NetworkToolboxApp(QMainWindow):
 
     def _make_nav_btn(self, icon, label, idx, disabled=False, disabled_text=""):
         label_text = label if not disabled_text else f"{label} ({disabled_text})"
-        # Icon can be emoji string or image path
-        btn = QPushButton(f"    {label_text}")
+        btn = QPushButton(f"  {label_text}")
         if icon:
             icon_path = self._resolve_icon(icon)
             if os.path.isfile(icon_path):
                 btn.setIcon(QIcon(icon_path))
                 btn.setIconSize(QSize(20, 20))
             else:
-                btn.setText(f"  {icon}   {label_text}")
+                btn.setIcon(drawn_icon(icon, 24, fg="#8d96a1", accent="#8d96a1", bg="transparent"))
+                btn.setIconSize(QSize(24, 24))
+                btn._icon_key = icon
         btn.setStyleSheet(BTN_NAV_INACTIVE)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setMinimumHeight(48)
         if disabled:
             btn.setEnabled(False)
             btn.setStyleSheet("""
                 QPushButton {
-                    background: transparent; color: #c0c0c0; border: none;
-                    border-radius: 8px; padding: 8px 12px; font-size: 13px; text-align: left;
+                    background: transparent; color: #a0a7b1; border: none;
+                    border-radius: 10px; padding: 9px 12px; font-size: 14px; text-align: left;
                 }
             """)
         else:
@@ -612,7 +629,7 @@ class NetworkToolboxApp(QMainWindow):
     def _build_content_area(self, root_layout, module_registry):
         content_wrapper = QWidget()
         wrapper_layout = QVBoxLayout(content_wrapper)
-        wrapper_layout.setContentsMargins(8, 20, 20, 20)
+        wrapper_layout.setContentsMargins(34, 40, 36, 30)
         wrapper_layout.setSpacing(0)
 
         self._stack = QStackedWidget()
@@ -634,8 +651,8 @@ class NetworkToolboxApp(QMainWindow):
                 logger.exception(f"模块 {mod.name} 构建 UI 失败")
                 err = QLabel(f"模块加载失败: {e}")
                 err.setStyleSheet("font-size: 14px; color: #e74c3c; background: transparent;")
-                page.layout = QVBoxLayout(page)
-                page.layout.addWidget(err)
+                err_layout = QVBoxLayout(page)
+                err_layout.addWidget(err)
             self._stack.addWidget(page)
             self._modules.append(mod)
             self._pages.append(page)
@@ -649,6 +666,9 @@ class NetworkToolboxApp(QMainWindow):
                 logger.exception(f"模块 {old_mod.name} on_hide 异常")
 
         new_mod = self._modules[index]
+        old_name = getattr(self._modules[getattr(self, "_active_index", index)], "name", "无")
+        if not hasattr(self, "_active_index") or old_name != new_mod.name:
+            logger.info(f"[应用] 切换模块: {old_name} -> {new_mod.name}")
         self._stack.setCurrentIndex(index)
         # Ensure context menu filter covers new module's widgets
         self._install_menu_on_children(self._pages[index])
@@ -662,8 +682,12 @@ class NetworkToolboxApp(QMainWindow):
         for i, btn in enumerate(self._nav_buttons):
             if i == index:
                 btn.setStyleSheet(BTN_NAV_ACTIVE)
+                if hasattr(btn, "_icon_key"):
+                    btn.setIcon(drawn_icon(btn._icon_key, 24, fg="#11a37f", accent="#11a37f", bg="transparent"))
             elif not btn._module.disabled:
                 btn.setStyleSheet(BTN_NAV_INACTIVE)
+                if hasattr(btn, "_icon_key"):
+                    btn.setIcon(drawn_icon(btn._icon_key, 24, fg="#8d96a1", accent="#8d96a1", bg="transparent"))
 
     # ═══════════════ after() compatibility (thread-safe) ═══════════════
 
@@ -673,7 +697,8 @@ class NetworkToolboxApp(QMainWindow):
         Thread-safe: stores the callback and triggers drain via invokeMethod
         so QTimer is always created on the main thread.
         """
-        self._pending_callbacks.append((ms, callback, args))
+        with self._pending_callbacks_lock:
+            self._pending_callbacks.append((ms, callback, args))
         QMetaObject.invokeMethod(
             self, "_drain_callbacks",
             Qt.ConnectionType.QueuedConnection,
@@ -682,10 +707,12 @@ class NetworkToolboxApp(QMainWindow):
     @Slot()
     def _drain_callbacks(self):
         """Called on main thread. Process accumulated callbacks."""
-        while self._pending_callbacks:
-            ms, cb, cb_args = self._pending_callbacks.pop(0)
+        with self._pending_callbacks_lock:
+            callbacks = self._pending_callbacks
+            self._pending_callbacks = []
+        for ms, cb, cb_args in callbacks:
             if cb_args:
-                QTimer.singleShot(ms, lambda a=cb_args: cb(*a))
+                QTimer.singleShot(ms, lambda c=cb, a=cb_args: c(*a))
             else:
                 QTimer.singleShot(ms, cb)
 
@@ -702,7 +729,7 @@ class NetworkToolboxApp(QMainWindow):
         dlg.setWindowTitle("运行日志")
         dlg.resize(700, 450)
         dlg.setMinimumSize(500, 300)
-        dlg.setStyleSheet("QDialog { background: #f9f9f9; }")
+        dlg.setStyleSheet("QDialog { background: #ffffff; }")
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(15, 12, 15, 12)
         layout.setSpacing(8)
@@ -713,7 +740,7 @@ class NetworkToolboxApp(QMainWindow):
         hl.setContentsMargins(0, 0, 0, 0)
         hl.setSpacing(8)
         title = QLabel("运行日志")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #1f1f1f; background: transparent;")
+        title.setStyleSheet(H2_STYLE)
         hl.addWidget(title)
         hl.addStretch(1)
 
@@ -731,7 +758,7 @@ class NetworkToolboxApp(QMainWindow):
 
         # Path hint
         path_hint = QLabel(f"日志文件: {logger.log_path}")
-        path_hint.setStyleSheet("font-size: 10px; color: #999999; background: transparent;")
+        path_hint.setStyleSheet("font-size: 10px; color: #8a929d; background: transparent;")
         layout.addWidget(path_hint)
 
         # Text area
@@ -740,8 +767,8 @@ class NetworkToolboxApp(QMainWindow):
         self._log_text.setObjectName("logText")
         self._log_text.setStyleSheet("""
             QPlainTextEdit {
-                border: 1px solid #e5e5e5; border-radius: 8px;
-                background: #1e1e1e; color: #d4d4d4;
+                border: 1px solid #e1e5e9; border-radius: 8px;
+                background: #202020; color: #d4d4d4;
                 font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 11px;
                 padding: 8px;
             }

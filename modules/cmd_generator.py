@@ -1,8 +1,11 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-Command generator module - template-based batch command generation (PySide6 edition).
+Template-based batch command generator.
 """
 
 import json
@@ -14,11 +17,12 @@ from PySide6.QtWidgets import (
     QCheckBox, QProgressBar, QMenu, QInputDialog, QFileDialog, QMessageBox,
     QApplication,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
 
 from core.base_module import ToolModule
 from core.app import BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, set_card_style, set_transparent_bg, set_dark_output
 from core.app import H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE
+from core.icons import icon as drawn_icon
 from core.logger import logger
 
 
@@ -49,8 +53,7 @@ def _get_project_root():
         if parent == p:
             break
         p = parent
-    # Fallback: use known path
-    return "/Users/tangwenbo/Desktop/project/network_toolbox"
+    return os.path.join(os.path.expanduser("~"), ".nettool")
 
 _user_templates_file = os.path.join(_get_project_root(), "templates", "templates_user.json")
 
@@ -74,7 +77,7 @@ def _save_user_templates(data):
 
 class CmdGeneratorModule(ToolModule):
     name = "命令生成器"
-    icon = "\u2328\ufe0f"
+    icon = "cmd"
     description = "基于模板批量生成网络配置命令，支持内置/自定义模板，变量步进和同步循环生成。"
 
     def build(self, parent: QWidget):
@@ -104,7 +107,7 @@ class CmdGeneratorModule(ToolModule):
         tc_layout.setSpacing(6)
 
         th = QLabel("命令模板")
-        th.setStyleSheet(H2_STYLE + " color: #1f1f1f;")
+        th.setStyleSheet(H2_STYLE)
         tc_layout.addWidget(th)
 
         # Template selector + save
@@ -116,18 +119,21 @@ class CmdGeneratorModule(ToolModule):
 
         self._templ_combo = QComboBox()
         self._templ_combo.setMinimumWidth(160)
+        self._templ_combo.view().setStyleSheet(
+            "QAbstractItemView { background: #ffffff; color: #20242a; "
+            "selection-background-color: #e7f5f1; selection-color: #0b745c; "
+            "border: 1px solid #dfe3e8; outline: 0; }"
+        )
         self._templ_combo.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._templ_combo.customContextMenuRequested.connect(self._show_template_menu)
         self._rebuild_combo()
         self._templ_combo.currentIndexChanged.connect(self._on_template_select)
         srl.addWidget(self._templ_combo)
 
-        save_btn = QPushButton("\u2795 \u53e6\u5b58\u4e3a\u6a21\u677f...")
-        save_btn.setStyleSheet("""
-            QPushButton { background: #f0f0f0; color: #333; border: 1px solid #d1d5db;
-            border-radius: 6px; padding: 4px 12px; font-size: 11px; }
-            QPushButton:hover { background: #e0e0e0; }
-        """)
+        save_btn = QPushButton("另存为模板...")
+        save_btn.setIcon(drawn_icon("add", 15, fg="#ffffff", accent="#ffffff", bg="#9aa0a6"))
+        save_btn.setIconSize(QSize(15, 15))
+        save_btn.setStyleSheet(BTN_SECONDARY)
         save_btn.clicked.connect(self._save_current_template)
         srl.addWidget(save_btn)
         srl.addStretch(1)
@@ -135,7 +141,7 @@ class CmdGeneratorModule(ToolModule):
 
         # Hint label
         hint = QLabel("提示：使用 {1} ~ {5} 作为参数占位符，分别对应下方参数 1~5")
-        hint.setStyleSheet("font-size: 11px; color: #888; background: transparent; padding: 2px 0;")
+        hint.setStyleSheet(HINT_STYLE + " padding: 2px 0;")
         tc_layout.addWidget(hint)
 
         # Template input
@@ -143,19 +149,19 @@ class CmdGeneratorModule(ToolModule):
         self._templ_text.setPlaceholderText("提示: 请输入命令模板，参数格式为：{1}, {2}, {3}, {4}, {5}")
         self._templ_text.setStyleSheet("""
             QPlainTextEdit {
-                border: 1px solid #e5e5e5; border-radius: 8px;
-                background: #ffffff; color: #333333;
+                border: 1px solid #dfe3e8; border-radius: 8px;
+                background: #ffffff; color: #20242a;
                 font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 13px;
                 padding: 8px;
             }
             QPlainTextEdit QScrollBar:vertical {
-                background: #f0f0f0; border: none; border-radius: 4px; width: 8px; margin: 2px;
+                background: #f2f3f4; border: none; border-radius: 4px; width: 8px; margin: 2px;
             }
             QPlainTextEdit QScrollBar::handle:vertical {
-                background: #c0c0c0; border-radius: 4px; min-height: 30px;
+                background: #cfd5dc; border-radius: 4px; min-height: 30px;
             }
             QPlainTextEdit QScrollBar::handle:vertical:hover {
-                background: #a0a0a0;
+                background: #aeb6c0;
             }
             QPlainTextEdit QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
@@ -175,13 +181,13 @@ class CmdGeneratorModule(ToolModule):
         pc_layout.setSpacing(6)
 
         ph = QLabel("参数设置")
-        ph.setStyleSheet(H2_STYLE + " color: #1f1f1f;")
+        ph.setStyleSheet(H2_STYLE)
         pc_layout.addWidget(ph)
 
         self._advanced_visible = False
         self._advanced_btn = QPushButton("高级选项")
         self._advanced_btn.setStyleSheet("""
-            QPushButton { background: #10a37f; color: white; border: none;
+            QPushButton { background: #11a37f; color: white; border: none;
             border-radius: 6px; padding: 4px 12px; font-size: 11px; }
             QPushButton:hover { background: #0d8c6d; }
         """)
@@ -210,7 +216,7 @@ class CmdGeneratorModule(ToolModule):
             card.setMidLineWidth(0)
             card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
             card.setStyleSheet(
-                "QFrame { background-color: #f9f9f9; border: 1px solid #e5e5e5; border-radius: 8px; }"
+                "QFrame { background-color: #fafafa; border: 1px solid #e4e8ec; border-radius: 8px; }"
             )
             clayout = QVBoxLayout(card)
             clayout.setContentsMargins(10, 8, 10, 8)
@@ -219,7 +225,7 @@ class CmdGeneratorModule(ToolModule):
             # Title - centered with border matching input style
             ct = QLabel(f"参数 {col+1}")
             ct.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            ct.setStyleSheet("font-size: 12px; font-weight: bold; color: #1f1f1f; background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 0px;")
+            ct.setStyleSheet("font-size: 12px; font-weight: bold; color: #22252a; background: #ffffff; border: 1px solid #dfe3e8; border-radius: 6px; padding: 4px 0px;")
             clayout.addWidget(ct)
 
             # Base row: "基数: [input]"
@@ -229,11 +235,11 @@ class CmdGeneratorModule(ToolModule):
             brl.setSpacing(4)
             bl = QLabel("基数:")
             bl.setFixedWidth(40)
-            bl.setStyleSheet("font-size: 11px; color: #666; background: transparent;")
+            bl.setStyleSheet("font-size: 11px; color: #697281; background: transparent;")
             brl.addWidget(bl)
             be = QLineEdit("1")
             be.setFixedHeight(28)
-            be.setStyleSheet("QLineEdit { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 6px; font-size: 12px; }")
+            be.setStyleSheet("QLineEdit { background: #ffffff; color: #20242a; border: 1px solid #dfe3e8; border-radius: 6px; padding: 4px 6px; font-size: 12px; }")
             brl.addWidget(be, stretch=1)
             clayout.addWidget(b_row)
             self._param_base.append(be)
@@ -245,11 +251,11 @@ class CmdGeneratorModule(ToolModule):
             srl.setSpacing(4)
             sl = QLabel("步长:")
             sl.setFixedWidth(40)
-            sl.setStyleSheet("font-size: 11px; color: #666; background: transparent;")
+            sl.setStyleSheet("font-size: 11px; color: #697281; background: transparent;")
             srl.addWidget(sl)
             se = QLineEdit("1")
             se.setFixedHeight(28)
-            se.setStyleSheet("QLineEdit { background: #ffffff; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 6px; font-size: 12px; }")
+            se.setStyleSheet("QLineEdit { background: #ffffff; color: #20242a; border: 1px solid #dfe3e8; border-radius: 6px; padding: 4px 6px; font-size: 12px; }")
             srl.addWidget(se, stretch=1)
             clayout.addWidget(s_row)
             self._param_step.append(se)
@@ -264,13 +270,13 @@ class CmdGeneratorModule(ToolModule):
             rcb.toggled.connect(lambda checked, e=re if 're' in dir() else None: None)
             rrl.addWidget(rcb)
             rl = QLabel("重复:")
-            rl.setStyleSheet("font-size: 11px; color: #666;")
+            rl.setStyleSheet("font-size: 11px; color: #697281;")
             rrl.addWidget(rl)
             re = QLineEdit("1")
             re.setFixedHeight(28)
             re.setFixedWidth(50)
             re.setEnabled(False)
-            re.setStyleSheet("QLineEdit { background: #f0f0f0; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 6px; font-size: 11px; }")
+            re.setStyleSheet("QLineEdit { background: #f4f6f7; color: #20242a; border: 1px solid #dfe3e8; border-radius: 6px; padding: 4px 6px; font-size: 11px; }")
             rcb.toggled.connect(lambda checked, e=re: e.setEnabled(checked))
             rrl.addWidget(re)
             rrl.addStretch(1)
@@ -289,13 +295,13 @@ class CmdGeneratorModule(ToolModule):
             ccb.setStyleSheet("QCheckBox::indicator { width: 14px; height: 14px; }")
             crl.addWidget(ccb)
             cl2 = QLabel("计数:")
-            cl2.setStyleSheet("font-size: 11px; color: #666;")
+            cl2.setStyleSheet("font-size: 11px; color: #697281;")
             crl.addWidget(cl2)
             ce = QLineEdit("1")
             ce.setFixedHeight(28)
             ce.setFixedWidth(50)
             ce.setEnabled(False)
-            ce.setStyleSheet("QLineEdit { background: #f0f0f0; border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 6px; font-size: 11px; }")
+            ce.setStyleSheet("QLineEdit { background: #f4f6f7; color: #20242a; border: 1px solid #dfe3e8; border-radius: 6px; padding: 4px 6px; font-size: 11px; }")
             ccb.toggled.connect(lambda checked, e=ce: e.setEnabled(checked))
             crl.addWidget(ce)
             crl.addStretch(1)
@@ -327,7 +333,7 @@ class CmdGeneratorModule(ToolModule):
         oc_layout.setSpacing(6)
 
         oh = QLabel("命令输出")
-        oh.setStyleSheet(H2_STYLE + " color: #1f1f1f;")
+        oh.setStyleSheet(H2_STYLE)
         oc_layout.addWidget(oh)
 
         # Command count + buttons
@@ -338,7 +344,7 @@ class CmdGeneratorModule(ToolModule):
         crl.setSpacing(8)
 
         cl = QLabel("命令数量")
-        cl.setStyleSheet(H3_STYLE + " color: #333;")
+        cl.setStyleSheet(H3_STYLE)
         crl.addWidget(cl)
         self._cmd_count = QLineEdit("30")
         self._cmd_count.setFixedWidth(60)
@@ -347,28 +353,20 @@ class CmdGeneratorModule(ToolModule):
 
         self._gen_btn = QPushButton("生成")
         self._gen_btn.setStyleSheet(BTN_PRIMARY)
-        self._gen_btn.setFixedSize(70, 28)
+        self._gen_btn.setMinimumSize(76, 32)
         self._gen_btn.clicked.connect(self._generate_commands)
         crl.addWidget(self._gen_btn)
 
-        self._save_btn = QPushButton("保存")
-        self._save_btn.setStyleSheet("""
-            QPushButton { background: #f5f5f5; color: #333; border: 1px solid #e5e5e5;
-            border-radius: 6px; padding: 4px 12px; font-size: 12px; }
-            QPushButton:hover { background: #e8e8e8; }
-        """)
-        self._save_btn.setFixedSize(60, 28)
+        self._save_btn = QPushButton("保存到文件")
+        self._save_btn.setStyleSheet(BTN_SECONDARY)
+        self._save_btn.setMinimumSize(96, 32)
         self._save_btn.clicked.connect(self._save_output)
         crl.addWidget(self._save_btn)
 
-        self._clear_btn = QPushButton("清空")
-        self._clear_btn.setStyleSheet("""
-            QPushButton { background: #f5f5f5; color: #333; border: 1px solid #e5e5e5;
-            border-radius: 6px; padding: 4px 12px; font-size: 12px; }
-            QPushButton:hover { background: #e8e8e8; }
-        """)
-        self._clear_btn.setFixedSize(60, 28)
-        self._clear_btn.clicked.connect(lambda: self._result_text.clear())
+        self._clear_btn = QPushButton("清空输出")
+        self._clear_btn.setStyleSheet(BTN_SECONDARY)
+        self._clear_btn.setMinimumSize(88, 32)
+        self._clear_btn.clicked.connect(self._clear_output)
         crl.addWidget(self._clear_btn)
         crl.addStretch(1)
         oc_layout.addWidget(ctrl_row)
@@ -383,7 +381,7 @@ class CmdGeneratorModule(ToolModule):
         self._progress = QProgressBar()
         self._progress.hide()
         self._progress_label = QLabel("")
-        self._progress_label.setStyleSheet(HINT_STYLE + " color: #666;")
+        self._progress_label.setStyleSheet(HINT_STYLE)
         self._progress_label.hide()
         oc_layout.addWidget(self._progress)
         oc_layout.addWidget(self._progress_label)
@@ -422,6 +420,7 @@ class CmdGeneratorModule(ToolModule):
         else:
             content = ""
         self._templ_text.setPlainText(content)
+        logger.info(f"[命令生成器] 选择模板: {name}, length={len(content)}")
 
     def _save_current_template(self):
         name, ok = QInputDialog.getText(self.app, "保存模板", "输入模板名称:")
@@ -490,12 +489,18 @@ class CmdGeneratorModule(ToolModule):
             self._advanced_btn.setText("收起高级选项")
         else:
             self._advanced_btn.setText("高级选项")
+        logger.info(f"[命令生成器] {'展开' if self._advanced_visible else '收起'}高级选项")
+
+    def _clear_output(self):
+        self._result_text.clear()
+        logger.info("[命令生成器] 清空生成结果")
 
     # ── Generate ──
 
     def _generate_commands(self):
         template = self._templ_text.toPlainText().strip()
         if not template:
+            logger.warning("[命令生成器] 生成失败: 模板为空")
             QMessageBox.warning(self.app, "提示", "请输入命令模板")
             return
 
@@ -530,6 +535,7 @@ class CmdGeneratorModule(ToolModule):
 
         self._result_text.setReadOnly(False)
         self._result_text.clear()
+        logger.info(f"[命令生成器] 开始生成: template={self._get_template_name()}, count={count}, params={params}")
 
         lines = []
         for i in range(count):
@@ -542,6 +548,7 @@ class CmdGeneratorModule(ToolModule):
                 cmd = template.format(*values)
             except (IndexError, KeyError) as e:
                 cmd = f"# Error: {e}"
+                logger.error(f"[命令生成器] 模板格式化失败: row={i+1}, error={e}")
 
             lines.append(cmd)
 
@@ -561,6 +568,7 @@ class CmdGeneratorModule(ToolModule):
     def _save_output(self):
         text = self._result_text.toPlainText().strip()
         if not text:
+            logger.warning("[命令生成器] 保存失败: 没有可保存的内容")
             QMessageBox.warning(self.app, "提示", "没有可保存的内容")
             return
 

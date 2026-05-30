@@ -1,22 +1,12 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+NTP client query and local NTP server module.
 """
-
-"""NTP Tool module - combined NTP client and server (PySide6 edition)."""
 
 import socket
 import struct
@@ -195,7 +185,7 @@ class _NTPServerThread(threading.Thread):
 
 class NTPToolModule(ToolModule):
     name = "NTP 工具"
-    icon = "\U0001f550"
+    icon = "ntp"
     description = "查询网络时间服务器或在本机启动 NTP 服务，为局域网设备提供时间同步。"
 
     def build(self, parent: QWidget):
@@ -230,7 +220,9 @@ class NTPToolModule(ToolModule):
 
         mb_wrapper = QWidget()
         mb_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        mb_wrapper.setStyleSheet("background: #f0f0f0; border: none; border-radius: 8px;")
+        mb_wrapper.setStyleSheet(
+            "background: #eef0f2; border: 1px solid #e2e5e9; border-radius: 8px;"
+        )
         mbl = QHBoxLayout(mb_wrapper)
         mbl.setContentsMargins(4, 4, 4, 4)
         mbl.setSpacing(4)
@@ -322,11 +314,12 @@ class NTPToolModule(ToolModule):
         self._result_output.setShowGrid(False)
         self._result_output.setStyleSheet("""
             QTableWidget {
-                border: 1px solid #e5e5e5; border-radius: 8px;
-                background: #1e1e1e; color: #e0e0e0;
+                border: 1px solid #2c2c2c; border-radius: 8px;
+                background: #202020; color: #e8e8e8;
                 font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 12px;
                 padding: 4px;
             }
+            QTableWidget::viewport { background: #202020; }
             QTableWidget::item { padding: 3px 8px; border: none; }
         """)
         self._result_output.setColumnWidth(0, 100)
@@ -388,7 +381,7 @@ class NTPToolModule(ToolModule):
         brl.addWidget(self._toggle_btn)
 
         self._status_label = QLabel("状态: 已停止")
-        self._status_label.setStyleSheet(BODY_STYLE + " color: #666666;")
+        self._status_label.setStyleSheet(BODY_STYLE)
         brl.addWidget(self._status_label)
         brl.addStretch(1)
 
@@ -523,6 +516,7 @@ class NTPToolModule(ToolModule):
         self._result_output.clear()
         self._result_output.clearSpans()
         self._result_output.setRowCount(0)
+        logger.info("[NTP客户端] 清空查询结果")
 
     # ── Server actions ──
 
@@ -551,7 +545,7 @@ class NTPToolModule(ToolModule):
         self._toggle_btn.setText("停止服务")
         self._toggle_btn.setStyleSheet(BTN_DANGER)
         self._status_label.setText("状态: 运行中")
-        self._status_label.setStyleSheet(BODY_STYLE + " color: #10a37f;")
+        self._status_label.setStyleSheet(BODY_STYLE + " color: #11a37f;")
         self._port_entry.setEnabled(False)
 
     def _drain_srv_queue(self):
@@ -560,6 +554,12 @@ class NTPToolModule(ToolModule):
                 text = self._srv_queue.get_nowait()
                 self._log_text.setReadOnly(False)
                 self._log_text.appendPlainText(text)
+                if "[错误]" in text:
+                    logger.error(f"[NTP服务器] {text}")
+                elif "[提示]" in text or "[信息]" in text:
+                    logger.info(f"[NTP服务器] {text}")
+                else:
+                    logger.info(f"[NTP服务器] {text}")
                 sb = self._log_text.verticalScrollBar()
                 sb.setValue(sb.maximum())
                 self._log_text.setReadOnly(True)
@@ -581,7 +581,7 @@ class NTPToolModule(ToolModule):
         self._toggle_btn.setText("启动服务")
         self._toggle_btn.setStyleSheet(BTN_PRIMARY)
         self._status_label.setText("状态: 已停止")
-        self._status_label.setStyleSheet(BODY_STYLE + " color: #666666;")
+        self._status_label.setStyleSheet(BODY_STYLE)
         self._port_entry.setEnabled(True)
 
     def _log(self, text):
@@ -598,3 +598,4 @@ class NTPToolModule(ToolModule):
         self._log_text.setReadOnly(False)
         self._log_text.clear()
         self._log_text.setReadOnly(True)
+        logger.info("[NTP服务器] 清空运行日志")

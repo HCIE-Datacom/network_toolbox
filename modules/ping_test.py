@@ -1,8 +1,11 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-PING test module - ICMP Ping / Tracert / TCPing (PySide6 edition).
+ICMP Ping, Traceroute, and TCPing test module.
 """
 
 import socket
@@ -34,7 +37,7 @@ from core.logger import logger
 
 class PingTestModule(ToolModule):
     name = "PING 测试"
-    icon = "\U0001f4e1"
+    icon = "ping"
     description = "支持 ICMP Ping、路由追踪（Traceroute）和 TCP 端口连通性测试（TCPing）。"
 
     def build(self, parent: QWidget):
@@ -103,7 +106,9 @@ class PingTestModule(ToolModule):
         self._mode_btns = {}
         mode_wrapper = QWidget()
         mode_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        mode_wrapper.setStyleSheet("background: #f0f0f0; border-radius: 8px;")
+        mode_wrapper.setStyleSheet(
+            "background: #eef0f2; border: 1px solid #e2e5e9; border-radius: 8px;"
+        )
         mwl = QHBoxLayout(mode_wrapper)
         mwl.setContentsMargins(4, 4, 4, 4)
         mwl.setSpacing(4)
@@ -228,8 +233,14 @@ class PingTestModule(ToolModule):
         # Determine mode
         mode = getattr(self, "_current_mode", "ping")
 
-        count = int(self._count_entry.text().strip() or "4")
-        port = int(self._port_entry.text().strip() or "80")
+        try:
+            count = int(self._count_entry.text().strip() or "4")
+            port = int(self._port_entry.text().strip() or "80")
+        except ValueError:
+            logger.warning("[PING测试] 参数无效: 次数或端口不是数字")
+            QMessageBox.warning(self.app, "提示", "次数和端口必须是数字")
+            return
+        logger.info(f"[PING测试] 开始: mode={mode}, target={target}, count={count}, port={port}")
 
         self._stop_event.clear()
         self._clear_output()
@@ -244,12 +255,14 @@ class PingTestModule(ToolModule):
             threading.Thread(target=self._run_tcping, args=(target, count, port), daemon=True).start()
 
     def _stop(self):
+        logger.info("[PING测试] 用户停止测试")
         self._stop_event.set()
         if self._popen:
             try:
                 self._popen.terminate()
+                logger.info("[PING测试] 已终止 traceroute 子进程")
             except Exception:
-                pass
+                logger.exception("[PING测试] 终止子进程失败")
 
     def _finish(self):
         self.app.after(0, lambda: self._start_btn.setEnabled(True))
@@ -309,6 +322,7 @@ class PingTestModule(ToolModule):
                     time.sleep(0.5)
 
         except Exception as e:
+            logger.exception(f"[PING测试] Ping 异常: {target}")
             self.app.after(0, lambda: self._output.appendPlainText(f"Error: {e}"))
         finally:
             if sent > 0 and recv > 0:
@@ -323,6 +337,9 @@ class PingTestModule(ToolModule):
                 summary = ""
             if summary:
                 self.app.after(0, lambda s=summary: self._output.appendPlainText(s))
+                logger.info(f"[PING测试] Ping 完成: target={target}, {summary}")
+            else:
+                logger.info(f"[PING测试] Ping 结束: target={target}, 未发送请求")
             self._finish()
 
     # ── Traceroute ──
@@ -332,6 +349,7 @@ class PingTestModule(ToolModule):
             cmd = ["tracert", "-d", target]      # -d: no DNS, faster
         else:
             cmd = ["/usr/sbin/traceroute", "-n", target]  # -n: no DNS, faster
+        logger.info(f"[PING测试] Tracert 执行命令: {' '.join(cmd)}")
         # Windows: hide CMD window
         si = None
         if platform.system() == "Windows":
@@ -350,17 +368,18 @@ class PingTestModule(ToolModule):
                     line_count += 1
                     self.app.after(0, lambda l=line: self._output.appendPlainText(l))
             self._popen.wait()
+            logger.info(f"[PING测试] Tracert 完成: target={target}, returncode={self._popen.returncode}, lines={line_count}")
             if line_count == 0:
                 self.app.after(0, lambda: self._output.appendPlainText(
                     "没有收到traceroute输出，请确认目标可达且网络正常"))
         except FileNotFoundError:
+            logger.error("[PING测试] traceroute/tracert 命令不可用")
             self.app.after(0, lambda: self._output.appendPlainText(
                 "traceroute 命令不可用，请确认系统已安装"))
         except Exception as e:
+            logger.exception(f"[PING测试] Tracert 异常: {target}")
             self.app.after(0, lambda m=str(e): self._output.appendPlainText(
                 f"traceroute 执行异常: {m}"))
-        except Exception as e:
-            self.app.after(0, lambda: self._output.appendPlainText(f"Error: {e}"))
         finally:
             self._popen = None
             self._finish()
@@ -419,11 +438,15 @@ class PingTestModule(ToolModule):
             summary = ""
         if summary:
             self.app.after(0, lambda s=summary: self._output.appendPlainText(s))
+            logger.info(f"[PING测试] TCPing 完成: target={target}:{port}, {summary}")
+        else:
+            logger.info(f"[PING测试] TCPing 结束: target={target}:{port}, 未发送请求")
         self._finish()
 
     # ── Output ──
 
     def _clear_output(self):
+        logger.info("[PING测试] 清空输出")
         self._output.clear()
         self._stats_sent.setText("0")
         self._stats_recv.setText("0")

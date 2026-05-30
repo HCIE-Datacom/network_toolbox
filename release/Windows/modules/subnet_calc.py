@@ -1,22 +1,12 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+Subnet calculation, CIDR planning, and route summarization module.
 """
-
-"""Subnet Calculator module - IP subnet division and route summarization (PySide6 edition)."""
 
 import ipaddress
 
@@ -32,12 +22,13 @@ from core.app import (
     set_card_style, set_transparent_bg, set_dark_output,
     H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE,
 )
+from core.logger import logger
 
 IDSP = '\u3000'
 
 class SubnetCalcModule(ToolModule):
     name = "子网计算"
-    icon = "\U0001F310"
+    icon = "subnet"
     description = "支持子网划分计算和地址汇总（路由聚合），快速获取网络地址、广播地址、可用主机范围等信息。"
 
     def build(self, parent: QWidget):
@@ -73,7 +64,9 @@ class SubnetCalcModule(ToolModule):
 
         mode_btn_wrapper = QWidget()
         mode_btn_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        mode_btn_wrapper.setStyleSheet("background: #f0f0f0; border-radius: 8px;")
+        mode_btn_wrapper.setStyleSheet(
+            "background: #eef0f2; border: 1px solid #e2e5e9; border-radius: 8px;"
+        )
         mbl = QHBoxLayout(mode_btn_wrapper)
         mbl.setContentsMargins(4, 4, 4, 4)
         mbl.setSpacing(4)
@@ -137,8 +130,8 @@ class SubnetCalcModule(ToolModule):
         self._summary_input = QPlainTextEdit()
         self._summary_input.setStyleSheet("""
             QPlainTextEdit {
-                border: 1px solid #d1d5db; border-radius: 8px;
-                background: #f9f9f9; color: #333333;
+                border: 1px solid #dfe3e8; border-radius: 8px;
+                background: #ffffff; color: #20242a;
                 font-family: "Cascadia Code", "Consolas", "SF Mono", "Menlo", "Microsoft YaHei", "Courier New", monospace; font-size: 11px;
                 padding: 6px;
             }
@@ -214,7 +207,7 @@ class SubnetCalcModule(ToolModule):
         sep.setFrameShape(QFrame.Shape.NoFrame)
         sep.setLineWidth(0)
         sep.setFixedHeight(1)
-        sep.setStyleSheet("background: #e5e5e5; border: none;")
+        sep.setStyleSheet("background: #e1e5e9; border: none;")
         sr_layout.addWidget(sep)
         sr_layout.addSpacing(8)
 
@@ -257,6 +250,7 @@ class SubnetCalcModule(ToolModule):
     # ── Mode switching ──
 
     def _set_mode(self, mode):
+        logger.info(f"[子网计算] 切换模式: {mode}")
         self._update_mode_buttons(mode)
         if mode == "subnet":
             self._subnet_frame.show()
@@ -299,6 +293,7 @@ class SubnetCalcModule(ToolModule):
         try:
             network = ipaddress.ip_network(cidr_str, strict=False)
         except ValueError:
+            logger.warning(f"[子网计算] 子网输入格式错误: {cidr_str}")
             self._set_result("cidr", "输入格式错误")
             for k in self._result_labels:
                 if k != "cidr":
@@ -351,6 +346,13 @@ class SubnetCalcModule(ToolModule):
         self._set_result("wildcard", str(wc))
 
         self._draw_binary_viz(network)
+        log_key = str(network)
+        if getattr(self, "_last_logged_subnet", None) != log_key:
+            self._last_logged_subnet = log_key
+            logger.info(
+                f"[子网计算] 计算完成: input={cidr_str}, network={network}, "
+                f"hosts={max(network.num_addresses - 2, 0)}"
+            )
 
     def _set_result(self, key, value):
         if key in self._result_labels:
@@ -400,6 +402,7 @@ class SubnetCalcModule(ToolModule):
         content = self._summary_input.toPlainText().strip()
 
         if not content:
+            logger.warning("[子网计算] 地址汇总失败: 输入为空")
             self._summary_output.setPlainText("请输入至少一个网络地址")
             return
 
@@ -410,10 +413,12 @@ class SubnetCalcModule(ToolModule):
                 net = ipaddress.ip_network(line, strict=False)
                 networks.append(net)
             except ValueError:
+                logger.warning(f"[子网计算] 地址汇总解析失败: {line}")
                 self._summary_output.setPlainText(f'错误: 无法解析 "{line}"')
                 return
 
         if not networks:
+            logger.warning("[子网计算] 地址汇总失败: 无有效网络")
             self._summary_output.setPlainText("未输入有效的网络地址")
             return
 
@@ -423,6 +428,7 @@ class SubnetCalcModule(ToolModule):
             viz_text = "\n\n".join(f"  {l.ljust(6, IDSP)}：{v}" for l, v in rows)
             viz_text += "\n\n  （仅输入了一个网络，无需汇总）"
             self._summary_output.setPlainText(viz_text)
+            logger.info(f"[子网计算] 地址汇总完成: single={net}")
             return
 
         networks.sort(key=lambda n: int(n.network_address))
@@ -457,6 +463,11 @@ class SubnetCalcModule(ToolModule):
 
             viz_text = "\n\n".join(f"  {l.ljust(6, IDSP)}：{v}" for l, v in rows)
             self._summary_output.setPlainText(viz_text)
+            logger.info(
+                f"[子网计算] 地址汇总完成: input={len(networks)} 条, "
+                f"collapsed={', '.join(str(n) for n in collapsed)}, supernet={supernet}"
+            )
 
         except Exception as e:
+            logger.exception("[子网计算] 地址汇总异常")
             self._summary_output.setPlainText(f"\n  汇总计算错误: {e}")

@@ -27,10 +27,10 @@ dist/
 build/
 *.egg-info/
 .workbuddy/
-.spec
 NetTool-*.dmg
-release/macOS/
+!release/macOS/NetTool-*.dmg
 release/Windows/python/
 release/Windows/wheels/
-release/macOS/
+release/macOS/.DS_Store
+release/NetTool-Windows-*-buildkit.zip
 release/NetTool.exe

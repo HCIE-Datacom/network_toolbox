@@ -1,25 +1,11 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""
-
-"""AppLogger - global logging for the network toolbox.
-
-Logs to file + in-memory ring buffer.  The ring buffer lets the UI show
-recent log lines without re-reading the file.
+Application-wide logging with file output and in-memory UI buffer.
 """
 
 import logging
@@ -84,9 +70,9 @@ class AppLogger:
         self._logger.setLevel(logging.DEBUG)
         self._logger.handlers.clear()
 
-        # File handler (rotating, max 2MB x 3 backups)
+        # File handler (rotating, max 5MB x 5 backups)
         fh = logging.handlers.RotatingFileHandler(
-            self._log_path, maxBytes=2 * 1024 * 1024, backupCount=3,
+            self._log_path, maxBytes=5 * 1024 * 1024, backupCount=5,
             encoding="utf-8"
         )
         fh.setLevel(logging.DEBUG)
@@ -97,7 +83,7 @@ class AppLogger:
         self._logger.addHandler(fh)
 
         # Memory handler for UI
-        self._mem = _MemoryHandler(capacity=500)
+        self._mem = _MemoryHandler(capacity=2000)
         self._mem.setLevel(logging.DEBUG)
         self._mem.setFormatter(logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s",

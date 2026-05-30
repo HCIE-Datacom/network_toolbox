@@ -1,22 +1,12 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+MAC address vendor lookup using the local OUI database.
 """
-
-"""MAC address vendor lookup using IEEE OUI database (PySide6 edition)."""
 
 import json
 import os
@@ -75,7 +65,7 @@ class MACLookupModule(ToolModule):
     """MAC address vendor lookup tool."""
 
     name = "MAC 地址查询"
-    icon = "\U0001f4cd"  # 📍
+    icon = "mac"
     description = "基于 IEEE OUI 数据库查询 MAC 地址厂商信息，支持多种 MAC 格式输入。"
 
     def build(self, parent: QWidget):
@@ -149,25 +139,25 @@ class MACLookupModule(ToolModule):
         rc_layout.setSpacing(4)
 
         rh = QLabel("查询结果")
-        rh.setStyleSheet(H2_STYLE + " color: #1f1f1f;")
+        rh.setStyleSheet(H2_STYLE)
         rc_layout.addWidget(rh)
         rc_layout.addSpacing(8)
 
         self._result_oui_label = QLabel("")
-        self._result_oui_label.setStyleSheet(H3_STYLE + " color: #666666;")
+        self._result_oui_label.setStyleSheet(H3_STYLE)
         rc_layout.addWidget(self._result_oui_label)
 
         self._result_name_label = QLabel("")
-        self._result_name_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #10a37f; background: transparent;")
+        self._result_name_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #11a37f; background: transparent;")
         rc_layout.addWidget(self._result_name_label)
 
         self._result_addr_label = QLabel("")
-        self._result_addr_label.setStyleSheet(H3_STYLE + " color: #666666;")
+        self._result_addr_label.setStyleSheet(H3_STYLE)
         self._result_addr_label.setWordWrap(True)
         rc_layout.addWidget(self._result_addr_label)
 
         self._result_full_label = QLabel("")
-        self._result_full_label.setStyleSheet(HINT_STYLE + " color: #999999;")
+        self._result_full_label.setStyleSheet(HINT_STYLE)
         rc_layout.addWidget(self._result_full_label)
 
         layout.addWidget(result_card)
@@ -184,7 +174,7 @@ class MACLookupModule(ToolModule):
         hc_layout.setSpacing(8)
 
         hh = QLabel("查询历史")
-        hh.setStyleSheet(H2_STYLE + " color: #1f1f1f;")
+        hh.setStyleSheet(H2_STYLE)
         hc_layout.addWidget(hh)
 
         self._history_list = QPlainTextEdit()
@@ -223,7 +213,7 @@ class MACLookupModule(ToolModule):
         if info:
             self._result_oui_label.setText(f"OUI: {oui_display}")
             self._result_name_label.setText(info["name"])
-            self._result_name_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #10a37f; background: transparent;")
+            self._result_name_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #11a37f; background: transparent;")
             addr = info.get("addr", "").replace("\n", "  |  ")
             self._result_addr_label.setText(addr if addr else "")
             self._result_full_label.setText(f"完整 MAC: {full_display}")

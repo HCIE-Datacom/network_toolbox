@@ -1,30 +1,19 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+Base class used by all NetTool feature modules.
 """
-
-"""ToolModule - base class for all toolbox features (PySide6 edition)."""
-
 
 class ToolModule:
     """Base class for a toolbox feature module.
 
     Subclass this to create a new feature. Each module must define:
       - name: str           (sidebar button label)
-      - icon: str           (emoji icon for sidebar)
+      - icon: str           (semantic key for the shared drawn icon system)
       - description: str    (subtitle text below the page title)
       - build(parent)       (build the UI into parent QWidget)
       - on_show()           (optional, called when page becomes visible)

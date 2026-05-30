@@ -1,8 +1,11 @@
 """
 NetTool - Network Toolbox
-Copyright (C) 2026 Tang Wenbo (HCIE-Datacom)
+Version: V100R008C00SPC500
+Author: Tang Wenbo (HCIE-Datacom)
+Copyright (C) 2026 Tang Wenbo
+License: GNU General Public License v3.0 or later
 
-iPerf bandwidth test module - pure Python TCP/UDP (PySide6 edition).
+Pure Python TCP/UDP bandwidth test module.
 """
 
 import socket
@@ -25,7 +28,7 @@ from core.logger import logger
 
 class IperfToolModule(ToolModule):
     name = "iPerf 带宽测试"
-    icon = "\U0001f4f6"
+    icon = "iperf"
     description = "纯 Python TCP/UDP 带宽测试工具，支持客户端和服务器模式，多流并发测试。"
 
     def build(self, parent: QWidget):
@@ -56,7 +59,9 @@ class IperfToolModule(ToolModule):
         self._mode_btns = {}
         mb_wrapper = QWidget()
         mb_wrapper.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        mb_wrapper.setStyleSheet("background: #f0f0f0; border-radius: 8px;")
+        mb_wrapper.setStyleSheet(
+            "background: #eef0f2; border: 1px solid #e2e5e9; border-radius: 8px;"
+        )
         mbl = QHBoxLayout(mb_wrapper)
         mbl.setContentsMargins(4, 4, 4, 4)
         mbl.setSpacing(4)
@@ -309,6 +314,7 @@ class IperfToolModule(ToolModule):
     def _stop(self):
         if not self._running:
             return
+        logger.info("[iPerf] 用户停止测试/服务器")
         self._stop_event.set()
         self._append_output("[INFO] 正在停止...")
 
@@ -372,6 +378,10 @@ class IperfToolModule(ToolModule):
         if streams > 1:
             self._append_output(f"[INFO] 并行流: {streams}，缓冲: {buf_kb} KB")
         self._append_output("-" * 50)
+        logger.info(
+            f"[iPerf客户端] 开始测试: proto={proto}, host={host}, port={port}, "
+            f"duration={duration}, streams={streams}, buffer_kb={buf_kb}, udp_bw={bw_mbps or '-'}"
+        )
 
         if proto == "TCP":
             threading.Thread(target=self._run_tcp_client,
@@ -398,6 +408,7 @@ class IperfToolModule(ToolModule):
         self._append_output(f"[INFO] 启动服务器: {bind_addr}:{port}")
         self._append_output("[INFO] 等待客户端连接...")
         self._append_output("-" * 50)
+        logger.info(f"[iPerf服务器] 启动请求: bind={bind_addr}, port={port}")
 
         threading.Thread(target=self._run_server, args=(bind_addr, port), daemon=True).start()
 
@@ -438,6 +449,7 @@ class IperfToolModule(ToolModule):
                 sock.close()
             except Exception as e:
                 self.app.after(0, self._append_output, f"[ERROR] TCP流{stream_id}: {e}")
+                logger.exception(f"[iPerf客户端] TCP 流异常: stream={stream_id}, host={host}, port={port}")
 
         threads = [threading.Thread(target=do_stream, args=(sid,), daemon=True) for sid in range(streams)]
         for t in threads:
@@ -500,6 +512,7 @@ class IperfToolModule(ToolModule):
                 sock.close()
             except Exception as e:
                 self.app.after(0, self._append_output, f"[ERROR] UDP流{stream_id}: {e}")
+                logger.exception(f"[iPerf客户端] UDP 流异常: stream={stream_id}, host={host}, port={port}")
 
         threads = [threading.Thread(target=do_stream, args=(sid,), daemon=True) for sid in range(streams)]
         for t in threads:
@@ -541,6 +554,7 @@ class IperfToolModule(ToolModule):
             udp_sock.bind((bind_addr, port))
 
             self.app.after(0, self._append_output, f"[INFO] 服务器已启动，监听 TCP+UDP :{port}")
+            logger.info(f"[iPerf服务器] 已启动: bind={bind_addr}, port={port}")
 
             last_report = [start_time]
             last_tcp = [0]
@@ -608,6 +622,7 @@ class IperfToolModule(ToolModule):
                 try:
                     client_sock, addr = tcp_sock.accept()
                     self.app.after(0, self._append_output, f"[INFO] TCP 客户端连接: {addr[0]}:{addr[1]}")
+                    logger.info(f"[iPerf服务器] TCP 客户端连接: {addr[0]}:{addr[1]}")
                     t = threading.Thread(target=handle_tcp, args=(client_sock, addr), daemon=True)
                     t.start()
                 except socket.timeout:

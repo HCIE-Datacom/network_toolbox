@@ -1,34 +1,45 @@
-# NetTool v1.5.0
+# NetTool V100R008C00SPC500
 
 ## macOS
 
-1. 打开 `macOS/NetTool-v1.5.0.dmg`
-2. 拖入 `Applications`
-3. 首次启动：**右键 → 打开**（绕过未签名提示）
+发布文件：
 
----
+```text
+macOS/NetTool-V100R008C00SPC500.dmg
+```
+
+安装方式：
+
+1. 打开 DMG。
+2. 将 `NetTool.app` 拖入 `Applications`。
+3. 首次启动如遇未签名提示，请右键点击 App 后选择“打开”。
 
 ## Windows
 
-无需安装 Python，全部依赖已打包在内。
+发布文件：
 
-### 步骤
-
-1. 把 `Windows/` 文件夹拷贝到 Windows 电脑上
-2. 双击 `setup.bat` —— 安装依赖（仅需一次）
-3. 双击 `build.bat` —— 打包生成 `NetTool.exe`
-4. 输出在 `dist/NetTool/NetTool.exe`
-
-### 目录结构
-
+```text
+Windows/NetTool-V100R008C00SPC500.exe
 ```
+
+离线构建目录：
+
+```text
 Windows/
-├── setup.bat          # 步骤1：安装依赖
-├── build.bat          # 步骤2：打包 exe
-├── python/            # 嵌入式 Python 3.12
-├── wheels/            # 所有依赖包（离线安装）
-├── core/ modules/     # 源代码
-├── data/              # MAC 厂商数据库
-├── templates/         # 命令模板
-└── image_icon.png     # App 图标
 ```
+
+如需在 Windows 上重新构建：
+
+1. 拷贝 `Windows/` 目录到 Windows x64 机器。
+2. 双击 `setup.bat` 安装离线依赖。
+3. 双击 `build.bat` 生成 `dist\NetTool-V100R008C00SPC500.exe`。
+
+## 版本信息
+
+- 版本号：`V100R008C00SPC500`
+
+## 作者与协议
+
+- 作者：Tang Wenbo (HCIE-Datacom)
+- 版权：Copyright (C) 2026 Tang Wenbo
+- 协议：GNU General Public License v3.0 or later
