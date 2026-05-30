@@ -44,6 +44,8 @@ jobs:
     runs-on: macos-latest
     env:
       NETTOOL_VERSION: ${{ needs.prepare.outputs.version }}
+      HAS_MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' }}
+      HAS_MACOS_NOTARIZATION: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,13 +65,54 @@ jobs:
         run: |
           python -m compileall -q network_toolbox.py core modules
 
+      - name: Import Apple signing certificate
+        if: env.HAS_MACOS_CERTIFICATE == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_PATH="${RUNNER_TEMP}/developer-id.p12"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/nettool-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          echo "${MACOS_CERTIFICATE}" | base64 --decode > "${CERT_PATH}"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" \
+            -P "${MACOS_CERTIFICATE_PASSWORD}" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "${KEYCHAIN_PATH}"
+          security list-keychain -d user -s "${KEYCHAIN_PATH}"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "${KEYCHAIN_PASSWORD}" \
+            "${KEYCHAIN_PATH}"
+
+          IDENTITY="$(security find-identity -v -p codesigning "${KEYCHAIN_PATH}" | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "${IDENTITY}" ]]; then
+            echo "Developer ID Application certificate not found." >&2
+            exit 1
+          fi
+
+          echo "CODESIGN_IDENTITY=${IDENTITY}" >> "${GITHUB_ENV}"
+
       - name: Build app
         run: |
           python -m PyInstaller --noconfirm --clean NetTool.spec
           xattr -rd com.apple.provenance dist/NetTool.app 2>/dev/null || true
           xattr -cr dist/NetTool.app || true
-          codesign --force --deep --sign - dist/NetTool.app
-          codesign --verify --deep --verbose=2 dist/NetTool.app
+          if [[ "${HAS_MACOS_CERTIFICATE}" == "true" ]]; then
+            codesign --force --deep --options runtime --timestamp --sign "${CODESIGN_IDENTITY}" dist/NetTool.app
+            codesign --verify --deep --strict --verbose=2 dist/NetTool.app
+          else
+            echo "Apple Developer ID certificate is not configured; using ad-hoc signing."
+            codesign --force --deep --sign - dist/NetTool.app
+            codesign --verify --deep --verbose=2 dist/NetTool.app
+          fi
 
       - name: Create DMG
         run: |
@@ -85,6 +128,26 @@ jobs:
             -format UDZO \
             "release/macOS/NetTool-${NETTOOL_VERSION}.dmg"
           hdiutil verify "release/macOS/NetTool-${NETTOOL_VERSION}.dmg"
+
+      - name: Notarize DMG
+        if: env.HAS_MACOS_NOTARIZATION == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit "release/macOS/NetTool-${NETTOOL_VERSION}.dmg" \
+            --apple-id "${APPLE_ID}" \
+            --password "${APPLE_APP_PASSWORD}" \
+            --team-id "${APPLE_TEAM_ID}" \
+            --wait
+          xcrun stapler staple "release/macOS/NetTool-${NETTOOL_VERSION}.dmg"
+          xcrun stapler validate "release/macOS/NetTool-${NETTOOL_VERSION}.dmg"
+
+      - name: Notarization notice
+        if: env.HAS_MACOS_NOTARIZATION != 'true'
+        run: |
+          echo "Apple notarization secrets are not configured; downloaded DMG may trigger Gatekeeper warning."
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
