@@ -4,13 +4,13 @@ title NetTool Build
 
 echo.
 echo ============================================
-echo   NetTool V100R008C00SPC500 - Build
+echo   NetTool V100R008C00SPC600 - Build
 echo ============================================
 echo.
 
 :: Use embedded Python
 set PYTHON=python\python.exe
-set RELEASE_NAME=NetTool-V100R008C00SPC500
+set RELEASE_NAME=NetTool-V100R008C00SPC600
 
 if not exist "%PYTHON%" (
     echo [ERROR] Embedded Python not found.

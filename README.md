@@ -1,6 +1,6 @@
 # NetTool
 
-NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当前版本为 `V100R008C00SPC500`。
+NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当前版本为 `V100R008C00SPC600`。
 
 ## 功能
 
@@ -25,7 +25,7 @@ NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当
 - `C`：定制版本，默认 `C00`。
 - `SPC`：补丁版本，代表修复和维护版本。
 
-当前版本：`V100R008C00SPC500`。
+当前版本：`V100R008C00SPC600`。
 
 ## 开发运行
 
@@ -49,18 +49,18 @@ macOS 下也可以直接运行开发版：
 macOS 打包产物：
 
 ```text
-release/macOS/NetTool-V100R008C00SPC500.dmg
+release/macOS/NetTool-V100R008C00SPC600.dmg
 ```
 
 说明：DMG 是 macOS 安装包，打开后将 `NetTool.app` 拖入 `Applications`。
 
-Windows 打包产物：
+Windows 构建输出：
 
 ```text
-release/Windows/NetTool-V100R008C00SPC500.exe
+release/Windows/dist/NetTool-V100R008C00SPC600.exe
 ```
 
-说明：EXE 是 Windows 独立可执行文件，可直接运行。
+说明：EXE 需要在 Windows x64 机器上执行 `release/Windows/build.bat` 后生成。
 
 Windows 离线构建目录位于 `release/Windows/`，在 Windows x64 机器上执行：
 
@@ -72,7 +72,7 @@ build.bat
 `build.bat` 会生成：
 
 ```text
-dist\NetTool-V100R008C00SPC500.exe
+dist\NetTool-V100R008C00SPC600.exe
 ```
 
 ## 目录结构

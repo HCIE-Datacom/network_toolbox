@@ -55,12 +55,12 @@ app = BUNDLE(
     name='NetTool.app',
     icon='NetTool.app/Contents/Resources/AppIcon.icns',
     bundle_identifier='com.tangwenbo.networktoolbox',
-    version='V100R008C00SPC500',
+    version='V100R008C00SPC600',
     info_plist={
         'CFBundleDisplayName': 'NetTool',
-        'CFBundleShortVersionString': 'V100R008C00SPC500',
-        'CFBundleVersion': 'V100R008C00SPC500',
-        'NetToolVersion': 'V100R008C00SPC500',
+        'CFBundleShortVersionString': 'V100R008C00SPC600',
+        'CFBundleVersion': 'V100R008C00SPC600',
+        'NetToolVersion': 'V100R008C00SPC600',
         'NSHighResolutionCapable': True,
     },
 )

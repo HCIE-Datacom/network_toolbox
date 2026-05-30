@@ -1,14 +1,14 @@
 # NetTool Windows
 
-当前版本：`V100R008C00SPC500`。
+当前版本：`V100R008C00SPC600`。
 
-## 直接运行
+## 构建输出
 
 ```text
-NetTool-V100R008C00SPC500.exe
+dist\NetTool-V100R008C00SPC600.exe
 ```
 
-说明：该文件是 Windows 独立可执行文件，可直接运行。
+说明：该文件需要在 Windows x64 机器上执行 `build.bat` 后生成。
 
 ## 离线构建
 
@@ -16,11 +16,11 @@ NetTool-V100R008C00SPC500.exe
 
 1. 双击 `setup.bat` 安装依赖。
 2. 双击 `build.bat` 打包。
-3. 输出文件为 `dist\NetTool-V100R008C00SPC500.exe`。
+3. 输出文件为 `dist\NetTool-V100R008C00SPC600.exe`。
 
 ## 文件版本
 
-- 文件版本：`V100R008C00SPC500`
+- 文件版本：`V100R008C00SPC600`
 
 ## 作者与协议
 

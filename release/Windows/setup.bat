@@ -4,7 +4,7 @@ title NetTool Setup
 
 echo.
 echo ============================================
-echo   NetTool V100R008C00SPC500 - Setup
+echo   NetTool V100R008C00SPC600 - Setup
 echo ============================================
 echo.
 

@@ -1,11 +1,11 @@
-# NetTool V100R008C00SPC500
+# NetTool V100R008C00SPC600
 
 ## macOS
 
 发布文件：
 
 ```text
-macOS/NetTool-V100R008C00SPC500.dmg
+macOS/NetTool-V100R008C00SPC600.dmg
 ```
 
 说明：DMG 是 macOS 安装包。
@@ -18,13 +18,13 @@ macOS/NetTool-V100R008C00SPC500.dmg
 
 ## Windows
 
-发布文件：
+构建输出：
 
 ```text
-Windows/NetTool-V100R008C00SPC500.exe
+Windows/dist/NetTool-V100R008C00SPC600.exe
 ```
 
-说明：EXE 是 Windows 独立可执行文件，可直接运行。
+说明：EXE 需要在 Windows x64 机器上执行 `build.bat` 后生成。
 
 离线构建目录：
 
@@ -36,11 +36,11 @@ Windows/
 
 1. 拷贝 `Windows/` 目录到 Windows x64 机器。
 2. 双击 `setup.bat` 安装离线依赖。
-3. 双击 `build.bat` 生成 `dist\NetTool-V100R008C00SPC500.exe`。
+3. 双击 `build.bat` 生成 `dist\NetTool-V100R008C00SPC600.exe`。
 
 ## 版本信息
 
-- 版本号：`V100R008C00SPC500`
+- 版本号：`V100R008C00SPC600`
 
 ## 作者与协议
 
