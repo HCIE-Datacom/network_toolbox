@@ -10,7 +10,8 @@ echo.
 
 :: Use embedded Python
 set PYTHON=python\python.exe
-set RELEASE_NAME=NetTool-V100R008C00SPC700
+set NETTOOL_VERSION=V100R008C00SPC700
+set RELEASE_NAME=NetTool-%NETTOOL_VERSION%
 
 if not exist "%PYTHON%" (
     echo [ERROR] Embedded Python not found.

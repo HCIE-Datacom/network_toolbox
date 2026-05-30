@@ -55,23 +55,32 @@ macOS 下也可以直接运行开发版：
 
 最新发布文件请到 [GitHub Releases](https://github.com/HCIE-Datacom/network_toolbox/releases) 下载。
 
-macOS 打包产物：
+项目已接入 GitHub Actions 自动打包。推送版本标签后会自动构建 macOS DMG 和 Windows EXE，并上传到对应的 GitHub Release：
 
-```text
-release/macOS/NetTool-V100R008C00SPC700.dmg
+```bash
+git tag <版本号>
+git push origin main <版本号>
 ```
 
-说明：DMG 是 macOS 安装包，打开后将 `NetTool.app` 拖入 `Applications`。
+也可以在 GitHub 的 Actions 页面手动运行 `Build and Release NetTool` 工作流并填写版本号。
 
-Windows 构建输出：
+自动发布产物：
 
 ```text
-release/Windows/NetTool-V100R008C00SPC700.exe
+NetTool-V100R008C00SPC700.dmg
+NetTool-V100R008C00SPC700.exe
 ```
 
-说明：EXE 是 Windows x64 安装/运行文件；如需重新构建，可在 Windows 机器上执行 `release/Windows/build.bat`。
+说明：安装包只发布到 GitHub Releases，不再作为源码文件提交到仓库。
 
-Windows 离线构建目录位于 `release/Windows/`，在 Windows x64 机器上执行：
+本地 macOS App 构建可执行：
+
+```bash
+python3 -m pip install -r requirements.txt pyinstaller
+NETTOOL_VERSION=V100R008C00SPC700 python3 -m PyInstaller --noconfirm --clean NetTool.spec
+```
+
+Windows 离线构建目录仍位于 `release/Windows/`，在 Windows x64 机器上执行：
 
 ```bat
 setup.bat

@@ -1,14 +1,25 @@
 # NetTool V100R008C00SPC700
 
+## 发布方式
+
+安装包由 GitHub Actions 自动构建并上传到 GitHub Releases。源码仓库不再跟踪 DMG/EXE 安装包。
+
+触发方式：
+
+```bash
+git tag <版本号>
+git push origin main <版本号>
+```
+
+也可以在 GitHub Actions 页面手动运行 `Build and Release NetTool` 工作流。
+
 ## macOS
 
 发布文件：
 
 ```text
-macOS/NetTool-V100R008C00SPC700.dmg
+NetTool-V100R008C00SPC700.dmg
 ```
-
-说明：DMG 是 macOS 安装包。
 
 安装方式：
 
@@ -21,7 +32,7 @@ macOS/NetTool-V100R008C00SPC700.dmg
 发布文件：
 
 ```text
-Windows/NetTool-V100R008C00SPC700.exe
+NetTool-V100R008C00SPC700.exe
 ```
 
 说明：EXE 是 Windows x64 安装/运行文件。

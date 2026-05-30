@@ -1,0 +1,179 @@
+name: Build and Release NetTool
+
+on:
+  push:
+    tags:
+      - "V*R*C*SPC*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example V100R008C00SPC700"
+        required: true
+        default: "V100R008C00SPC700"
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Prepare Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "${VERSION}" =~ ^V[0-9]+R[0-9]+C[0-9]+SPC[0-9]+$ ]]; then
+            echo "Invalid version: ${VERSION}" >&2
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+  build-macos:
+    name: Build macOS DMG
+    needs: prepare
+    runs-on: macos-latest
+    env:
+      NETTOOL_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Validate Python sources
+        run: |
+          python -m compileall -q network_toolbox.py core modules
+
+      - name: Build app
+        run: |
+          python -m PyInstaller --noconfirm --clean NetTool.spec
+          xattr -rd com.apple.provenance dist/NetTool.app 2>/dev/null || true
+          xattr -cr dist/NetTool.app || true
+          codesign --force --deep --sign - dist/NetTool.app
+          codesign --verify --deep --verbose=2 dist/NetTool.app
+
+      - name: Create DMG
+        run: |
+          mkdir -p release/macOS
+          rm -rf /tmp/NetTool-dmg-staging
+          mkdir -p /tmp/NetTool-dmg-staging
+          cp -R dist/NetTool.app /tmp/NetTool-dmg-staging/
+          ln -s /Applications /tmp/NetTool-dmg-staging/Applications
+          hdiutil create \
+            -volname "NetTool ${NETTOOL_VERSION}" \
+            -srcfolder /tmp/NetTool-dmg-staging \
+            -ov \
+            -format UDZO \
+            "release/macOS/NetTool-${NETTOOL_VERSION}.dmg"
+          hdiutil verify "release/macOS/NetTool-${NETTOOL_VERSION}.dmg"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: release/macOS/NetTool-${{ needs.prepare.outputs.version }}.dmg
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows EXE
+    needs: prepare
+    runs-on: windows-latest
+    env:
+      NETTOOL_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Validate Python sources
+        run: |
+          python -m compileall -q network_toolbox.py core modules
+
+      - name: Build EXE
+        shell: pwsh
+        run: |
+          python -m PyInstaller `
+            --name="NetTool-${env:NETTOOL_VERSION}" `
+            --onefile `
+            --windowed `
+            --uac-admin `
+            --icon="release/Windows/netool.ico" `
+            --version-file="release/Windows/version_info.txt" `
+            --add-data="data;data" `
+            --add-data="templates;templates" `
+            --add-data="image_icon.png;." `
+            --collect-all modules `
+            --hidden-import="queue" `
+            --hidden-import="pyftpdlib" `
+            --hidden-import="paramiko" `
+            --hidden-import="ping3" `
+            --hidden-import="PySide6" `
+            --noconfirm `
+            --clean `
+            network_toolbox.py
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/NetTool-${{ needs.prepare.outputs.version }}.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - prepare
+      - build-macos
+      - build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: NetTool ${{ needs.prepare.outputs.version }}
+          make_latest: true
+          body: |
+            ## 更新说明
+
+            - 自动构建并发布 macOS DMG。
+            - 自动构建并发布 Windows EXE。
+            - 安装包由 GitHub Actions 生成，源码仓库不再跟踪二进制发布包。
+          files: |
+            artifacts/macos-dmg/NetTool-${{ needs.prepare.outputs.version }}.dmg
+            artifacts/windows-exe/NetTool-${{ needs.prepare.outputs.version }}.exe

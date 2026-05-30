@@ -2,10 +2,17 @@
 #
 # Windows file metadata for PyInstaller.
 # FixedFileInfo requires numeric tuples; string values keep the NetTool release name.
+import os
+import re
+
+NETTOOL_VERSION = os.environ.get('NETTOOL_VERSION', 'V100R008C00SPC700')
+match = re.match(r'^V(\d+)R(\d+)C(\d+)SPC(\d+)$', NETTOOL_VERSION)
+NUMERIC_VERSION = tuple(int(part) for part in match.groups()) if match else (100, 8, 0, 700)
+
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 8, 0, 700),
-    prodvers=(1, 8, 0, 700),
+    filevers=NUMERIC_VERSION,
+    prodvers=NUMERIC_VERSION,
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -20,11 +27,11 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'Tang Wenbo'),
           StringStruct('FileDescription', 'NetTool Network Toolbox'),
-          StringStruct('FileVersion', 'V100R008C00SPC700'),
+          StringStruct('FileVersion', NETTOOL_VERSION),
           StringStruct('InternalName', 'NetTool'),
-          StringStruct('OriginalFilename', 'NetTool-V100R008C00SPC700.exe'),
+          StringStruct('OriginalFilename', 'NetTool-' + NETTOOL_VERSION + '.exe'),
           StringStruct('ProductName', 'NetTool'),
-          StringStruct('ProductVersion', 'V100R008C00SPC700')
+          StringStruct('ProductVersion', NETTOOL_VERSION)
         ]
       )
     ]),

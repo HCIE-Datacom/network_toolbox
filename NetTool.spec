@@ -1,5 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+
 from PyInstaller.utils.hooks import collect_all
+
+APP_VERSION = os.environ.get('NETTOOL_VERSION', 'V100R008C00SPC700')
 
 datas = [('data', 'data'), ('templates', 'templates'), ('image_icon.png', '.')]
 binaries = []
@@ -55,12 +59,12 @@ app = BUNDLE(
     name='NetTool.app',
     icon='NetTool.app/Contents/Resources/AppIcon.icns',
     bundle_identifier='com.tangwenbo.networktoolbox',
-    version='V100R008C00SPC700',
+    version=APP_VERSION,
     info_plist={
         'CFBundleDisplayName': 'NetTool',
-        'CFBundleShortVersionString': 'V100R008C00SPC700',
-        'CFBundleVersion': 'V100R008C00SPC700',
-        'NetToolVersion': 'V100R008C00SPC700',
+        'CFBundleShortVersionString': APP_VERSION,
+        'CFBundleVersion': APP_VERSION,
+        'NetToolVersion': APP_VERSION,
         'NSHighResolutionCapable': True,
     },
 )

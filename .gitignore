@@ -28,7 +28,8 @@ build/
 *.egg-info/
 .workbuddy/
 NetTool-*.dmg
-!release/macOS/NetTool-*.dmg
+release/macOS/NetTool-*.dmg
+release/Windows/NetTool-*.exe
 release/Windows/python/
 release/Windows/wheels/
 release/macOS/.DS_Store
