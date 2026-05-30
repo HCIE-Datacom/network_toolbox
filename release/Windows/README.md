@@ -8,6 +8,8 @@
 NetTool-V100R008C00SPC500.exe
 ```
 
+说明：该文件是 Windows 独立可执行文件，可直接运行。
+
 ## 离线构建
 
 本目录包含 Windows x64 离线构建所需的源码、嵌入式 Python 和依赖包。

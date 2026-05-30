@@ -8,6 +8,8 @@
 macOS/NetTool-V100R008C00SPC500.dmg
 ```
 
+说明：DMG 是 macOS 安装包。
+
 安装方式：
 
 1. 打开 DMG。
@@ -21,6 +23,8 @@ macOS/NetTool-V100R008C00SPC500.dmg
 ```text
 Windows/NetTool-V100R008C00SPC500.exe
 ```
+
+说明：EXE 是 Windows 独立可执行文件，可直接运行。
 
 离线构建目录：
 

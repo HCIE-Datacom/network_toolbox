@@ -44,17 +44,23 @@ macOS 下也可以直接运行开发版：
 
 ## 打包
 
+最新发布文件请到 [GitHub Releases](https://github.com/HCIE-Datacom/network_toolbox/releases) 下载。
+
 macOS 打包产物：
 
 ```text
 release/macOS/NetTool-V100R008C00SPC500.dmg
 ```
 
+说明：DMG 是 macOS 安装包，打开后将 `NetTool.app` 拖入 `Applications`。
+
 Windows 打包产物：
 
 ```text
 release/Windows/NetTool-V100R008C00SPC500.exe
 ```
+
+说明：EXE 是 Windows 独立可执行文件，可直接运行。
 
 Windows 离线构建目录位于 `release/Windows/`，在 Windows x64 机器上执行：
 
