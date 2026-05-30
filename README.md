@@ -1,6 +1,6 @@
 # NetTool
 
-NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当前版本为 `V100R008C00SPC600`。
+NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当前版本为 `V100R008C00SPC700`。
 
 ## 功能
 
@@ -25,7 +25,16 @@ NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当
 - `C`：定制版本，默认 `C00`。
 - `SPC`：补丁版本，代表修复和维护版本。
 
-当前版本：`V100R008C00SPC600`。
+当前版本：`V100R008C00SPC700`。
+
+## 本次更新
+
+- FTP 客户端支持远程文件下载，下载开始后在日志中以单行进度条持续更新，完成后记录最终结果。
+- FTP 服务端补充客户端连接、登录、上传和下载日志，便于追踪文件传输行为。
+- FTP 服务端启动时会检测并释放被占用的 21 端口，处理逻辑与 NTP 服务保持一致。
+- FTP 文件列表支持列宽自动适配窗口、手动拖动列宽，并限制列宽不会被拖到异常尺寸。
+- FTP 文件列表增加右键菜单，支持上传、下载、删除、重命名、刷新和返回上级目录等操作。
+- 发布包更新为 `V100R008C00SPC700`，包含 macOS DMG 和 Windows EXE。
 
 ## 开发运行
 
@@ -49,18 +58,18 @@ macOS 下也可以直接运行开发版：
 macOS 打包产物：
 
 ```text
-release/macOS/NetTool-V100R008C00SPC600.dmg
+release/macOS/NetTool-V100R008C00SPC700.dmg
 ```
 
 说明：DMG 是 macOS 安装包，打开后将 `NetTool.app` 拖入 `Applications`。
 
-Windows 打包产物：
+Windows 构建输出：
 
 ```text
-release/Windows/NetTool-V100R008C00SPC600.exe
+release/Windows/NetTool-V100R008C00SPC700.exe
 ```
 
-说明：EXE 是 Windows 独立可执行文件，可直接运行。
+说明：EXE 是 Windows x64 安装/运行文件；如需重新构建，可在 Windows 机器上执行 `release/Windows/build.bat`。
 
 Windows 离线构建目录位于 `release/Windows/`，在 Windows x64 机器上执行：
 
@@ -72,7 +81,7 @@ build.bat
 `build.bat` 会生成：
 
 ```text
-dist\NetTool-V100R008C00SPC600.exe
+dist\NetTool-V100R008C00SPC700.exe
 ```
 
 ## 目录结构

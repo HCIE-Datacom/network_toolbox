@@ -1,6 +1,6 @@
 """
 NetTool - Network Toolbox
-Version: V100R008C00SPC600
+Version: V100R008C00SPC700
 Author: Tang Wenbo (HCIE-Datacom)
 Copyright (C) 2026 Tang Wenbo
 License: GNU General Public License v3.0 or later
@@ -21,10 +21,10 @@ from PySide6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QPlainTextEdit,
     QTreeWidget, QTreeWidgetItem, QHeaderView,
-    QDialog, QProgressBar, QFileDialog, QMessageBox,
+    QDialog, QProgressBar, QFileDialog, QMessageBox, QMenu,
 )
-from PySide6.QtCore import Qt, QTimer, QSize
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QTimer, QSize, QObject, QEvent
+from PySide6.QtGui import QIcon, QTextCursor
 
 import queue
 
@@ -38,6 +38,17 @@ from core.app import BTN_PRIMARY, BTN_DANGER, BTN_SECONDARY, BTN_MODE_ACTIVE, BT
 from core.app import H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE
 from core.icons import icon as drawn_icon
 from core.logger import logger
+
+
+class _TreeResizeFilter(QObject):
+    def __init__(self, callback):
+        super().__init__()
+        self._callback = callback
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, self._callback)
+        return False
 
 
 class FTPToolModule(ToolModule):
@@ -254,15 +265,17 @@ class FTPToolModule(ToolModule):
         # Remote tree
         self._tree = QTreeWidget()
         self._tree.setHeaderLabels(["名称", "大小", "修改时间"])
-        self._tree.setColumnWidth(0, 240)
-        self._tree.setColumnWidth(1, 70)
-        self._tree.setColumnWidth(2, 130)
+        self._configure_file_tree(self._tree)
         self._tree.setAlternatingRowColors(True)
         self._tree.setRootIsDecorated(False)
         self._tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self._tree.itemDoubleClicked.connect(self._on_tree_double_click)
+        self._tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._tree.customContextMenuRequested.connect(self._show_remote_context_menu)
         self._tree.setStyleSheet("""
             QTreeWidget { border: 1px solid #dfe3e8; border-radius: 6px; font-size: 11px; background: #ffffff; color: #20242a; alternate-background-color: #f8fafb; }
+            QHeaderView::section { background: #f7f8fa; color: #657386; border: none; border-right: 1px solid #d7dde4; border-bottom: 1px solid #dfe3e8; padding: 6px 8px; font-weight: 700; }
+            QHeaderView::section:last { border-right: none; }
             QTreeWidget::item { padding: 2px 4px; }
             QTreeWidget::item:selected { background: #e7f5f1; color: #0b745c; }
             QTreeWidget QScrollBar:vertical { background: #f2f3f4; border: none; border-radius: 4px; width: 8px; margin: 2px; }
@@ -347,15 +360,17 @@ class FTPToolModule(ToolModule):
         # Local tree
         self._local_tree = QTreeWidget()
         self._local_tree.setHeaderLabels(["名称", "大小", "修改时间"])
-        self._local_tree.setColumnWidth(0, 240)
-        self._local_tree.setColumnWidth(1, 70)
-        self._local_tree.setColumnWidth(2, 130)
+        self._configure_file_tree(self._local_tree)
         self._local_tree.setAlternatingRowColors(True)
         self._local_tree.setRootIsDecorated(False)
         self._local_tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self._local_tree.itemDoubleClicked.connect(self._on_local_double_click)
+        self._local_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._local_tree.customContextMenuRequested.connect(self._show_local_context_menu)
         self._local_tree.setStyleSheet("""
             QTreeWidget { border: 1px solid #dfe3e8; border-radius: 6px; font-size: 11px; background: #ffffff; color: #20242a; alternate-background-color: #f8fafb; }
+            QHeaderView::section { background: #f7f8fa; color: #657386; border: none; border-right: 1px solid #d7dde4; border-bottom: 1px solid #dfe3e8; padding: 6px 8px; font-weight: 700; }
+            QHeaderView::section:last { border-right: none; }
             QTreeWidget::item { padding: 2px 4px; }
             QTreeWidget::item:selected { background: #e7f5f1; color: #0b745c; }
             QTreeWidget QScrollBar:vertical { background: #f2f3f4; border: none; border-radius: 4px; width: 8px; margin: 2px; }
@@ -475,12 +490,208 @@ class FTPToolModule(ToolModule):
         l.setStyleSheet(BODY_STYLE)
         return l
 
+    def _configure_file_tree(self, tree):
+        header = tree.header()
+        header.setSectionsClickable(True)
+        header.setSectionsMovable(True)
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(64)
+        for col in range(3):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        header.sectionResized.connect(lambda col, _old, _new, t=tree: self._constrain_file_columns(t, active_col=col))
+        header.sectionDoubleClicked.connect(lambda _col, t=tree: self._auto_size_file_columns(t))
+
+        if not hasattr(self, "_tree_resize_filters"):
+            self._tree_resize_filters = []
+        resize_filter = _TreeResizeFilter(lambda t=tree: self._constrain_file_columns(t))
+        tree.installEventFilter(resize_filter)
+        tree.viewport().installEventFilter(resize_filter)
+        self._tree_resize_filters.append(resize_filter)
+
+        QTimer.singleShot(0, lambda t=tree: self._auto_size_file_columns(t))
+
+    def _auto_size_file_columns(self, tree):
+        viewport_width = self._file_tree_available_width(tree)
+        mins, maxes = self._file_column_limits(viewport_width)
+        size_width = max(mins[1], min(int(viewport_width * 0.12), maxes[1]))
+        time_width = max(mins[2], min(int(viewport_width * 0.22), maxes[2]))
+        name_width = max(mins[0], viewport_width - size_width - time_width)
+        tree.setColumnWidth(0, name_width)
+        tree.setColumnWidth(1, size_width)
+        tree.setColumnWidth(2, time_width)
+        self._constrain_file_columns(tree)
+
+    @staticmethod
+    def _file_tree_available_width(tree):
+        return max(tree.viewport().width() - 2, tree.width() - 28, 420)
+
+    @staticmethod
+    def _file_column_limits(available_width):
+        base_mins = [180, 85, 150]
+        min_total = sum(base_mins)
+        if available_width < min_total:
+            scale = available_width / min_total
+            mins = [max(64, int(v * scale)) for v in base_mins]
+        else:
+            mins = base_mins
+
+        maxes = [
+            max(mins[0], available_width - mins[1] - mins[2]),
+            max(mins[1], min(int(available_width * 0.28), available_width - mins[0] - mins[2])),
+            max(mins[2], min(int(available_width * 0.45), available_width - mins[0] - mins[1])),
+        ]
+        return mins, maxes
+
+    def _constrain_file_columns(self, tree, active_col=None):
+        if tree.property("_nt_constraining_columns"):
+            return
+        tree.setProperty("_nt_constraining_columns", True)
+        try:
+            available_width = self._file_tree_available_width(tree)
+            mins, maxes = self._file_column_limits(available_width)
+            widths = [tree.columnWidth(col) for col in range(3)]
+            widths = [max(mins[col], min(widths[col], maxes[col])) for col in range(3)]
+
+            overflow = sum(widths) - available_width
+            if overflow > 0:
+                reduce_order = [col for col in (2, 0, 1) if col != active_col]
+                if active_col in (0, 1, 2):
+                    reduce_order.append(active_col)
+                for col in reduce_order:
+                    if overflow <= 0:
+                        break
+                    reducible = max(0, widths[col] - mins[col])
+                    take = min(reducible, overflow)
+                    widths[col] -= take
+                    overflow -= take
+
+            spare = available_width - sum(widths)
+            if spare > 0:
+                grow_order = [2, 0, 1]
+                for col in grow_order:
+                    if spare <= 0:
+                        break
+                    growable = max(0, maxes[col] - widths[col])
+                    take = min(growable, spare)
+                    widths[col] += take
+                    spare -= take
+
+            for col, width in enumerate(widths):
+                if tree.columnWidth(col) != width:
+                    tree.setColumnWidth(col, int(width))
+        finally:
+            tree.setProperty("_nt_constraining_columns", False)
+
+    @staticmethod
+    def _style_context_menu(menu):
+        menu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        menu.setStyleSheet("""
+            QMenu {
+                background: #ffffff;
+                color: #20242a;
+                border: 1px solid #cfd5dc;
+                border-radius: 8px;
+                padding: 6px;
+                font-size: 13px;
+            }
+            QMenu::item {
+                background: transparent;
+                color: #20242a;
+                padding: 7px 30px 7px 14px;
+                border-radius: 6px;
+                min-width: 150px;
+            }
+            QMenu::item:selected {
+                background: #e7f5f1;
+                color: #0b745c;
+            }
+            QMenu::item:disabled {
+                color: #a8b0bb;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #e1e5e9;
+                margin: 5px 8px;
+            }
+        """)
+
+    @staticmethod
+    def _is_safe_file_name(name):
+        return bool(name) and "/" not in name and "\\" not in name and "\x00" not in name
+
+    def _ask_rename_name(self, title, old_name):
+        dlg = QDialog(self.app)
+        dlg.setWindowTitle(title)
+        dlg.setModal(True)
+        dlg.setFixedSize(420, 170)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        dlg.setStyleSheet("""
+            QDialog {
+                background: #ffffff;
+                color: #20242a;
+            }
+            QLabel {
+                background: transparent;
+                color: #394150;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QLineEdit {
+                background: #ffffff;
+                color: #20242a;
+                border: 1px solid #11a37f;
+                border-radius: 8px;
+                padding: 8px 10px;
+                font-size: 13px;
+                selection-background-color: #11a37f;
+                selection-color: #ffffff;
+            }
+            QLineEdit:focus {
+                border: 2px solid #11a37f;
+            }
+        """)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+
+        label = QLabel("新名称")
+        layout.addWidget(label)
+
+        entry = QLineEdit(old_name)
+        entry.selectAll()
+        entry.setMinimumHeight(38)
+        layout.addWidget(entry)
+
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 4, 0, 0)
+        btn_row.addStretch(1)
+        ok_btn = QPushButton("确定")
+        ok_btn.setStyleSheet(BTN_PRIMARY)
+        ok_btn.setFixedSize(96, 34)
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setStyleSheet(BTN_SECONDARY)
+        cancel_btn.setFixedSize(96, 34)
+        ok_btn.clicked.connect(dlg.accept)
+        cancel_btn.clicked.connect(dlg.reject)
+        entry.returnPressed.connect(dlg.accept)
+        btn_row.addWidget(ok_btn)
+        btn_row.addWidget(cancel_btn)
+        layout.addLayout(btn_row)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return entry.text().strip()
+
     @staticmethod
     def _ts():
         return time.strftime("%H:%M:%S")
 
     @staticmethod
     def _fmt_size(size):
+        if size is None:
+            return "未知"
         if size < 1024:
             return f"{size} B"
         elif size < 1024 * 1024:
@@ -489,6 +700,12 @@ class FTPToolModule(ToolModule):
             return f"{size / (1024 * 1024):.1f} MB"
         else:
             return f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+    @staticmethod
+    def _fmt_progress_bar(pct, width=18):
+        pct = max(0, min(100, int(pct)))
+        filled = int(width * pct / 100)
+        return "#" * filled + "-" * (width - filled)
 
     # ── Mode / Protocol switching ──
 
@@ -526,7 +743,52 @@ class FTPToolModule(ToolModule):
     # ── Log ──
 
     def _log(self, msg):
-        self.app.after(0, lambda: self._clog.appendPlainText(msg))
+        self.app.after(0, self._append_log_line, self._clog, msg)
+
+    def _log_progress(self, key, msg, done=False):
+        self.app.after(0, self._update_progress_line, self._clog, "_client_progress_lines", key, msg, done)
+
+    def _append_log_line(self, editor, msg):
+        was_read_only = editor.isReadOnly()
+        editor.setReadOnly(False)
+        doc = editor.document()
+        cursor = QTextCursor(doc)
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        if doc.blockCount() > 1 or doc.firstBlock().text():
+            cursor.insertBlock()
+        cursor.insertText(msg)
+        block_number = cursor.blockNumber()
+        cursor.insertBlock()
+        editor.setReadOnly(was_read_only)
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        return block_number
+
+    def _replace_log_line(self, editor, block_number, msg):
+        block = editor.document().findBlockByNumber(block_number)
+        if not block.isValid():
+            return False
+        was_read_only = editor.isReadOnly()
+        editor.setReadOnly(False)
+        cursor = QTextCursor(block)
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        cursor.insertText(msg)
+        editor.setReadOnly(was_read_only)
+        editor.moveCursor(QTextCursor.MoveOperation.End)
+        return True
+
+    def _update_progress_line(self, editor, state_attr, key, msg, done=False):
+        state = getattr(self, state_attr, None)
+        if state is None:
+            state = {}
+            setattr(self, state_attr, state)
+
+        block_number = state.get(key)
+        if block_number is None or not self._replace_log_line(editor, block_number, msg):
+            state[key] = self._append_log_line(editor, msg)
+
+        if done:
+            state.pop(key, None)
 
     # ── Connect / Disconnect ──
 
@@ -717,12 +979,76 @@ class FTPToolModule(ToolModule):
             logger.info(f"[FTP客户端] 进入远程目录: {self._current_remote_dir}")
             self._refresh_dir()
 
+    def _show_remote_context_menu(self, pos):
+        item = self._tree.itemAt(pos)
+        if item:
+            self._tree.setCurrentItem(item)
+
+        menu = QMenu(self._tree)
+        self._style_context_menu(menu)
+        if item:
+            name = item.data(0, Qt.ItemDataRole.UserRole)
+            tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if name == "__up__":
+                menu.addAction("返回上级目录", self._go_up)
+            elif tag == "dir":
+                menu.addAction("进入目录", lambda i=item: self._on_tree_double_click(i))
+                menu.addSeparator()
+                menu.addAction("重命名远程目录", lambda n=name: self._rename_remote(n))
+                menu.addAction("删除远程目录", self._delete_file)
+            else:
+                menu.addAction("下载到本地", self._download_file)
+                menu.addSeparator()
+                menu.addAction("重命名远程文件", lambda n=name: self._rename_remote(n))
+                menu.addAction("删除远程文件", self._delete_file)
+            menu.addSeparator()
+
+        menu.addAction("刷新远程列表", self._refresh_dir)
+        if self._current_remote_dir != "/":
+            menu.addAction("返回上级目录", self._go_up)
+        menu.exec(self._tree.viewport().mapToGlobal(pos))
+
     def _go_up(self):
         if self._current_remote_dir and self._current_remote_dir != "/":
             parent_dir = os.path.dirname(self._current_remote_dir.rstrip("/"))
             self._current_remote_dir = parent_dir if parent_dir else "/"
             logger.info(f"[FTP客户端] 返回远程上级目录: {self._current_remote_dir}")
             self._refresh_dir()
+
+    def _rename_remote(self, name):
+        if self._client is None:
+            QMessageBox.warning(self.app, "提示", "请先连接服务器")
+            return
+        if name == "__up__":
+            return
+
+        new_name = self._ask_rename_name("重命名远程文件", name)
+        if new_name is None:
+            return
+        if new_name == name:
+            return
+        if not self._is_safe_file_name(new_name):
+            QMessageBox.warning(self.app, "提示", "名称不能为空，且不能包含 / 或 \\")
+            return
+
+        old_path = self._remote_join(self._current_remote_dir, name)
+        new_path = self._remote_join(self._current_remote_dir, new_name)
+        logger.info(f"[FTP客户端] 准备重命名远程: {old_path} -> {new_path}")
+        threading.Thread(target=self._do_rename_remote, args=(old_path, new_path, name, new_name), daemon=True).start()
+
+    def _do_rename_remote(self, old_path, new_path, old_name, new_name):
+        ts = self._ts()
+        try:
+            if isinstance(self._client, ftplib.FTP):
+                self._client.rename(old_path, new_path)
+            else:
+                self._sftp.rename(old_path, new_path)
+            self.app.after(0, self._log, f"{ts}  [重命名] {old_name} -> {new_name}")
+            logger.info(f"[FTP客户端] 远程重命名成功: {old_path} -> {new_path}")
+            self.app.after(0, self._refresh_dir)
+        except Exception as e:
+            logger.exception(f"[FTP客户端] 远程重命名失败: {old_path} -> {new_path}")
+            self.app.after(0, self._log, f"{ts}  [错误] 重命名失败: {e}")
 
     # ── Local file browser ──
 
@@ -770,6 +1096,77 @@ class FTPToolModule(ToolModule):
             self._local_path_label.setText(self._local_dir)
             logger.info(f"[FTP客户端] 进入本地目录: {self._local_dir}")
             self._refresh_local()
+
+    def _show_local_context_menu(self, pos):
+        item = self._local_tree.itemAt(pos)
+        if item:
+            self._local_tree.setCurrentItem(item)
+
+        menu = QMenu(self._local_tree)
+        self._style_context_menu(menu)
+        if item:
+            name = item.data(0, Qt.ItemDataRole.UserRole)
+            tag = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if tag == "dir":
+                menu.addAction("进入目录", lambda i=item: self._on_local_double_click(i))
+                menu.addAction("重命名目录", lambda n=name: self._rename_local(n))
+                menu.addAction("在文件管理器中显示", lambda n=name: self._reveal_local_path(os.path.join(self._local_dir, n)))
+            else:
+                upload_action = menu.addAction("上传到远程", self._upload_file)
+                upload_action.setEnabled(self._client is not None)
+                menu.addAction("重命名文件", lambda n=name: self._rename_local(n))
+                menu.addAction("在文件管理器中显示", lambda n=name: self._reveal_local_path(os.path.join(self._local_dir, n)))
+            menu.addSeparator()
+
+        menu.addAction("选择本地目录", self._browse_local)
+        menu.addAction("刷新本地列表", self._refresh_local)
+        parent_action = menu.addAction("返回上级目录", self._go_up_local)
+        parent_action.setEnabled(bool(os.path.dirname(self._local_dir)) and os.path.dirname(self._local_dir) != self._local_dir)
+        menu.exec(self._local_tree.viewport().mapToGlobal(pos))
+
+    def _reveal_local_path(self, path):
+        path = os.path.normpath(path)
+        try:
+            if platform.system() == "Darwin":
+                subprocess.Popen(["open", "-R", path])
+            elif platform.system() == "Windows":
+                subprocess.Popen(["explorer", "/select,", path])
+            else:
+                target = path if os.path.isdir(path) else os.path.dirname(path)
+                subprocess.Popen(["xdg-open", target])
+            logger.info(f"[FTP客户端] 在文件管理器中显示: {path}")
+        except Exception as e:
+            logger.warning(f"[FTP客户端] 打开文件管理器失败: {path}: {e}")
+            QMessageBox.warning(self.app, "提示", f"无法打开文件管理器:\n{e}")
+
+    def _rename_local(self, name):
+        old_path = os.path.join(self._local_dir, name)
+        if not os.path.exists(old_path):
+            QMessageBox.warning(self.app, "提示", "文件不存在，请刷新本地列表")
+            return
+
+        new_name = self._ask_rename_name("重命名本地文件", name)
+        if new_name is None:
+            return
+        if new_name == name:
+            return
+        if not self._is_safe_file_name(new_name):
+            QMessageBox.warning(self.app, "提示", "名称不能为空，且不能包含 / 或 \\")
+            return
+
+        new_path = os.path.join(self._local_dir, new_name)
+        if os.path.exists(new_path):
+            QMessageBox.warning(self.app, "提示", "目标名称已存在")
+            return
+
+        try:
+            os.rename(old_path, new_path)
+            self._log(f"{self._ts()}  [重命名] {name} -> {new_name}")
+            logger.info(f"[FTP客户端] 本地重命名成功: {old_path} -> {new_path}")
+            self._refresh_local()
+        except Exception as e:
+            logger.exception(f"[FTP客户端] 本地重命名失败: {old_path} -> {new_path}")
+            QMessageBox.warning(self.app, "提示", f"重命名失败:\n{e}")
 
     def _go_up_local(self):
         parent_dir = os.path.dirname(self._local_dir)
@@ -861,6 +1258,8 @@ class FTPToolModule(ToolModule):
 
     def _start_transfer(self, direction, local_path, name):
         self._xfer_cancel = False
+        self._xfer_last_log_at = 0.0
+        self._xfer_key = f"client:{direction}:{time.time():.6f}:{name}"
         dlg = QDialog(self.app)
         dlg.setWindowTitle("传输中...")
         dlg.setFixedSize(420, 200)
@@ -887,11 +1286,22 @@ class FTPToolModule(ToolModule):
 
         dlg.show()
 
-        remote_path = self._current_remote_dir.rstrip("/") + "/" + name
+        remote_path = self._remote_join(self._current_remote_dir, name)
+        direction_text = "上传" if direction == "upload" else "下载"
+        self._log_progress(self._xfer_key, f"{self._ts()}  [{direction_text}进度] 开始{direction_text}: {name}")
+        logger.info(f"[FTP客户端] 开始{direction_text}: remote={remote_path}, local={local_path}")
         if direction == "upload":
             threading.Thread(target=self._do_upload, args=(local_path, remote_path, dlg), daemon=True).start()
         else:
             threading.Thread(target=self._do_download, args=(local_path, remote_path, dlg), daemon=True).start()
+
+    @staticmethod
+    def _remote_join(directory, name):
+        directory = (directory or "/").replace("\\", "/")
+        name = str(name).replace("\\", "/").lstrip("/")
+        if directory == "/":
+            return f"/{name}"
+        return f"{directory.rstrip('/')}/{name}"
 
     def _update_xfer(self, dlg, done, total):
         if dlg.isVisible():
@@ -899,6 +1309,20 @@ class FTPToolModule(ToolModule):
             self._xfer_bar.setValue(pct)
             speed = done / max(time.time() - getattr(self, '_xfer_start', time.time()), 0.001)
             self._xfer_info.setText(f"{self._fmt_size(done)} / {self._fmt_size(total)}  ({self._fmt_size(int(speed))}/s)")
+
+    def _log_xfer_progress(self, direction, name, done, total, force=False, finished=False):
+        now = time.time()
+        if not force and done > 0 and now - getattr(self, "_xfer_last_log_at", 0.0) < 0.8:
+            return
+        self._xfer_last_log_at = now
+        pct = min(100, int(done / max(total, 1) * 100)) if total else 0
+        bar = self._fmt_progress_bar(pct)
+        speed = done / max(now - getattr(self, '_xfer_start', now), 0.001)
+        amount = f"{self._fmt_size(done)} / {self._fmt_size(total)}" if total else self._fmt_size(done)
+        text = f"{self._ts()}  [{direction}进度] {name} [{bar}] {pct:3d}%  {amount}  {self._fmt_size(int(speed))}/s"
+        self._log_progress(getattr(self, "_xfer_key", f"client:{direction}:{name}"), text, done=finished)
+        if force or finished:
+            logger.info(f"[FTP客户端] {direction}进度: {name} {pct}% {amount} {self._fmt_size(int(speed))}/s")
 
     def _do_upload(self, local_path, remote_path, dlg):
         ts = self._ts()
@@ -914,9 +1338,10 @@ class FTPToolModule(ToolModule):
                     if self._xfer_cancel:
                         raise Exception("cancelled")
                     self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
+                    self._log_xfer_progress("上传", os.path.basename(local_path), done[0], total)
 
                 with open(local_path, "rb") as f:
-                    self._client.storbinary(f"STOR {os.path.basename(remote_path)}", f,
+                    self._client.storbinary(f"STOR {remote_path}", f,
                                              blocksize=8192, callback=cb)
             else:
                 def cb(transferred, _total):
@@ -924,9 +1349,11 @@ class FTPToolModule(ToolModule):
                     if self._xfer_cancel:
                         raise Exception("cancelled")
                     self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
+                    self._log_xfer_progress("上传", os.path.basename(local_path), done[0], total)
 
                 self._sftp.put(local_path, remote_path, callback=cb)
 
+            self._log_xfer_progress("上传", os.path.basename(local_path), total, total, force=True, finished=True)
             self.app.after(0, self._log, f"{ts}  [上传] {os.path.basename(local_path)} 完成")
             logger.info(f"[FTP客户端] 上传完成: local={local_path}, remote={remote_path}, size={total}")
             self.app.after(0, self._refresh_dir)
@@ -943,33 +1370,44 @@ class FTPToolModule(ToolModule):
         ts = self._ts()
         self._xfer_start = time.time()
 
-        if isinstance(self._client, ftplib.FTP):
-            total = self._client.size(os.path.basename(remote_path))
-        else:
-            total = self._sftp.stat(remote_path).st_size
-
-        self.app.after(0, self._xfer_bar.setMaximum, 100)
-        done = [0]
-
         try:
+            if isinstance(self._client, ftplib.FTP):
+                try:
+                    self._client.voidcmd("TYPE I")
+                    total = self._client.size(remote_path)
+                except Exception:
+                    total = 0
+            else:
+                total = self._sftp.stat(remote_path).st_size
+
+            self.app.after(0, self._xfer_bar.setMaximum, 100)
+            done = [0]
+
             if isinstance(self._client, ftplib.FTP):
                 def cb(block):
                     done[0] += len(block)
                     if self._xfer_cancel:
                         raise Exception("cancelled")
                     self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
+                    self._log_xfer_progress("下载", os.path.basename(remote_path), done[0], total)
+
+                def write_block(block):
+                    f.write(block)
+                    cb(block)
 
                 with open(local_path, "wb") as f:
-                    self._client.retrbinary(f"RETR {os.path.basename(remote_path)}", cb, blocksize=8192)
+                    self._client.retrbinary(f"RETR {remote_path}", write_block, blocksize=8192)
             else:
                 def cb(transferred, _total):
                     done[0] = transferred
                     if self._xfer_cancel:
                         raise Exception("cancelled")
                     self.app.after(0, lambda: self._update_xfer(dlg, done[0], total))
+                    self._log_xfer_progress("下载", os.path.basename(remote_path), done[0], total)
 
                 self._sftp.get(remote_path, local_path, callback=cb)
 
+            self._log_xfer_progress("下载", os.path.basename(remote_path), done[0], total, force=True, finished=True)
             self.app.after(0, self._log, f"{ts}  [下载] {os.path.basename(remote_path)} 完成")
             logger.info(f"[FTP客户端] 下载完成: remote={remote_path}, local={local_path}, size={total}")
             self.app.after(0, self._refresh_local)
@@ -992,7 +1430,7 @@ class FTPToolModule(ToolModule):
 
     def _start_server(self):
         from pyftpdlib.authorizers import DummyAuthorizer
-        from pyftpdlib.handlers import FTPHandler
+        from pyftpdlib.handlers import FTPHandler, DTPHandler
         from pyftpdlib.servers import FTPServer
 
         port_str = self._srv_port_entry.text().strip()
@@ -1012,9 +1450,172 @@ class FTPToolModule(ToolModule):
                 self._srv_dir_entry.setText(self._default_dir())
                 return
             release_notes = self._ensure_port_free(port)
+            self._srv_queue = queue.Queue()
             authorizer = DummyAuthorizer()
             authorizer.add_user(user, pwd, root_dir, perm="elradfmw")
-            handler = FTPHandler
+
+            log_queue = self._srv_queue
+            module_cls = FTPToolModule
+            root_realpath = os.path.realpath(root_dir)
+
+            class NetToolDTPHandler(DTPHandler):
+                _progress_interval = 0.8
+
+                def __init__(self, sock, cmd_channel):
+                    super().__init__(sock, cmd_channel)
+                    self._nt_last_progress_at = 0.0
+
+                def _emit_progress(self, force=False):
+                    cmd = getattr(self, "cmd", None)
+                    file_obj = getattr(self, "file_obj", None)
+                    if cmd not in ("RETR", "STOR") or file_obj is None:
+                        return
+
+                    now = time.time()
+                    transferred = self.get_transmitted_bytes()
+                    if not force and transferred > 0 and now - self._nt_last_progress_at < self._progress_interval:
+                        return
+                    self._nt_last_progress_at = now
+
+                    filename = getattr(file_obj, "name", "")
+                    direction = "下载" if cmd == "RETR" else "上传"
+                    try:
+                        total = os.path.getsize(filename) if cmd == "RETR" else None
+                    except Exception:
+                        total = None
+
+                    elapsed = max(self.get_elapsed_time(), 0.001)
+                    speed = transferred / elapsed
+                    if total:
+                        pct = min(100, int(transferred / max(total, 1) * 100))
+                        bar = module_cls._fmt_progress_bar(pct)
+                        amount = f"{module_cls._fmt_size(transferred)} / {module_cls._fmt_size(total)}"
+                    else:
+                        pct = 0
+                        bar = module_cls._fmt_progress_bar(0)
+                        amount = module_cls._fmt_size(transferred)
+
+                    path = self.cmd_channel._display_path(filename)
+                    key = self.cmd_channel._progress_key(direction, path)
+                    log_queue.put((
+                        "progress",
+                        key,
+                        f"{module_cls._ts_now()} [{direction}进度] "
+                        f"{self.cmd_channel._client_label()} {path} "
+                        f"[{bar}] {pct:3d}%  {amount}  {module_cls._fmt_size(int(speed))}/s",
+                        force,
+                    ))
+
+                def send(self, data):
+                    sent = super().send(data)
+                    self._emit_progress()
+                    return sent
+
+                def initiate_sendfile(self):
+                    super().initiate_sendfile()
+                    self._emit_progress()
+
+                def handle_read(self):
+                    super().handle_read()
+                    self._emit_progress()
+
+                def close(self):
+                    try:
+                        self._emit_progress(force=True)
+                    except Exception:
+                        pass
+                    super().close()
+
+            class NetToolFTPHandler(FTPHandler):
+                dtp_handler = NetToolDTPHandler
+
+                def _client_label(self):
+                    ip = getattr(self, "remote_ip", None) or "unknown"
+                    port = getattr(self, "remote_port", None) or "-"
+                    return f"{ip}:{port}"
+
+                def _put_log(self, level, message):
+                    log_queue.put(f"{module_cls._ts_now()} [{level}] {message}")
+
+                def _progress_key(self, direction, path):
+                    return f"{direction}:{self._client_label()}:{path}"
+
+                def _display_path(self, file):
+                    try:
+                        real = os.path.realpath(file)
+                        rel = os.path.relpath(real, root_realpath)
+                        if rel == ".":
+                            return "/"
+                        if not rel.startswith(".."):
+                            return "/" + rel.replace(os.sep, "/")
+                    except Exception:
+                        pass
+                    return str(file)
+
+                def _display_size(self, file):
+                    try:
+                        return f" ({module_cls._fmt_size(os.path.getsize(file))})"
+                    except Exception:
+                        return ""
+
+                def _transfer_start_log(self, direction, file):
+                    if direction == "下载" and not os.path.isfile(file):
+                        return
+                    try:
+                        size = os.path.getsize(file)
+                    except Exception:
+                        size = None
+                    path = self._display_path(file)
+                    amount = module_cls._fmt_size(size)
+                    log_queue.put((
+                        "progress",
+                        self._progress_key(direction, path),
+                        f"{module_cls._ts_now()} [{direction}进度] "
+                        f"{self._client_label()} 开始{direction}: {path} ({amount})",
+                        False,
+                    ))
+
+                def _clear_transfer_progress(self, direction, file):
+                    path = self._display_path(file)
+                    log_queue.put(("clear_progress", self._progress_key(direction, path)))
+
+                def on_connect(self):
+                    self._put_log("连接", f"客户端连接: {self._client_label()}")
+
+                def on_disconnect(self):
+                    self._put_log("断开", f"客户端断开: {self._client_label()}")
+
+                def on_login(self, username):
+                    self._put_log("登录", f"用户 {username} 登录成功: {self._client_label()}")
+
+                def on_login_failed(self, username, password):
+                    self._put_log("警告", f"用户 {username or '<空>'} 登录失败: {self._client_label()}")
+
+                def on_file_sent(self, file):
+                    self._clear_transfer_progress("下载", file)
+                    self._put_log("下载", f"{self._client_label()} 下载文件: {self._display_path(file)}{self._display_size(file)}")
+
+                def on_incomplete_file_sent(self, file):
+                    self._clear_transfer_progress("下载", file)
+                    self._put_log("警告", f"{self._client_label()} 下载中断: {self._display_path(file)}")
+
+                def on_file_received(self, file):
+                    self._clear_transfer_progress("上传", file)
+                    self._put_log("上传", f"{self._client_label()} 上传文件: {self._display_path(file)}{self._display_size(file)}")
+
+                def on_incomplete_file_received(self, file):
+                    self._clear_transfer_progress("上传", file)
+                    self._put_log("警告", f"{self._client_label()} 上传中断: {self._display_path(file)}")
+
+                def ftp_RETR(self, file):
+                    self._transfer_start_log("下载", file)
+                    return super().ftp_RETR(file)
+
+                def ftp_STOR(self, file, mode="w"):
+                    self._transfer_start_log("上传", file)
+                    return super().ftp_STOR(file, mode)
+
+            handler = NetToolFTPHandler
             handler.authorizer = authorizer
             self._server_instance = FTPServer(("0.0.0.0", port), handler)
         except Exception as e:
@@ -1050,7 +1651,6 @@ class FTPToolModule(ToolModule):
         self._srv_log.setReadOnly(True)
         logger.info(f"[FTP服务器] 启动配置: port={port}, root={root_dir}, user={user}")
 
-        self._srv_queue = queue.Queue()
         self._srv_timer = QTimer()
         self._srv_timer.timeout.connect(self._drain_srv_queue)
         self._srv_timer.start(100)
@@ -1086,20 +1686,44 @@ class FTPToolModule(ToolModule):
     @staticmethod
     def _ensure_port_free(port):
         notes = []
-        for attempt in range(2):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                sock.bind(("0.0.0.0", port))
+        last_error = None
+        for attempt in range(3):
+            ok, err = FTPToolModule._can_bind_tcp_port(port)
+            if ok:
+                if attempt > 0:
+                    notes.append(f"[信息] 端口 {port} 已释放，正在重新启动 FTP 服务...")
                 return notes
-            except OSError as e:
-                if attempt == 0 and platform.system() == "Windows":
-                    notes.append(f"[信息] 端口 {port} 被占用，正在尝试自动释放...")
-                    notes.extend(FTPToolModule._release_windows_port(port))
-                    time.sleep(1)
-                    continue
-                raise OSError(f"端口 {port} 已被占用，请停止占用程序或换一个端口 ({e})") from e
-            finally:
-                sock.close()
+
+            last_error = err
+            errno = getattr(err, "winerror", 0) or getattr(err, "errno", 0)
+            if errno in (13, 10013):
+                raise PermissionError(f"端口 {port} 需要管理员权限或被系统安全策略阻止 ({err})") from err
+            if attempt == 0:
+                notes.append(f"[信息] 端口 {port} 被占用，正在尝试自动释放...")
+                notes.extend(FTPToolModule._release_occupied_port(port))
+            time.sleep(1.2)
+
+        raise OSError(f"端口 {port} 已被占用，自动释放失败，请停止占用程序或换一个端口 ({last_error})")
+
+    @staticmethod
+    def _can_bind_tcp_port(port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            if hasattr(socket, "SO_REUSEADDR"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("0.0.0.0", port))
+            return True, None
+        except OSError as e:
+            return False, e
+        finally:
+            sock.close()
+
+    @staticmethod
+    def _release_occupied_port(port):
+        system = platform.system()
+        if system == "Windows":
+            return FTPToolModule._release_windows_port(port)
+        return FTPToolModule._release_posix_port(port)
         return notes
 
     @staticmethod
@@ -1164,6 +1788,68 @@ class FTPToolModule(ToolModule):
             notes.append("[提示] 未找到可自动释放的占用进程")
         return notes
 
+    @staticmethod
+    def _release_posix_port(port):
+        notes = []
+
+        def run(cmd):
+            return subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=8,
+                encoding="utf-8",
+                errors="replace",
+            )
+
+        pids = set()
+        try:
+            result = run(["lsof", "-nP", "-iTCP:%s" % port, "-sTCP:LISTEN", "-t"])
+            if result.returncode in (0, 1):
+                for line in result.stdout.splitlines():
+                    pid = line.strip()
+                    if pid.isdigit() and pid != str(os.getpid()):
+                        pids.add(pid)
+            else:
+                err = (result.stderr or result.stdout).strip()
+                notes.append(f"[提示] 检测端口占用失败: {err or 'lsof 执行失败'}")
+        except FileNotFoundError:
+            notes.append("[提示] 未找到 lsof，无法自动检测占用进程")
+        except Exception as e:
+            notes.append(f"[提示] 检测端口占用失败: {e}")
+
+        for pid in sorted(pids):
+            try:
+                result = subprocess.run(["kill", "-TERM", pid], capture_output=True, text=True, timeout=5)
+                if result.returncode != 0:
+                    err = (result.stderr or result.stdout).strip()
+                    notes.append(f"[提示] 无法结束 PID {pid}: {err or '权限不足'}")
+                    logger.warning(f"[FTP服务器] 无法结束占用端口 {port} 的进程 PID {pid}: {err or '权限不足'}")
+                    continue
+                time.sleep(0.5)
+                still_running = subprocess.run(
+                    ["kill", "-0", pid],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                ).returncode == 0
+                if still_running:
+                    result = subprocess.run(["kill", "-KILL", pid], capture_output=True, text=True, timeout=5)
+                    if result.returncode != 0:
+                        err = (result.stderr or result.stdout).strip()
+                        notes.append(f"[提示] 无法强制结束 PID {pid}: {err or '权限不足'}")
+                        logger.warning(f"[FTP服务器] 无法强制结束占用端口 {port} 的进程 PID {pid}: {err or '权限不足'}")
+                        continue
+                notes.append(f"[信息] 已结束占用端口 {port} 的进程 PID {pid}")
+                logger.info(f"[FTP服务器] 已结束占用端口 {port} 的进程 PID {pid}")
+            except Exception as e:
+                notes.append(f"[提示] 无法结束 PID {pid}: {e}")
+                logger.warning(f"[FTP服务器] 无法结束占用端口 {port} 的进程 PID {pid}: {e}")
+
+        if not notes:
+            notes.append("[提示] 未找到可自动释放的占用进程")
+        return notes
+
     def _close_server_instance(self):
         if self._server_instance is not None:
             try:
@@ -1179,10 +1865,21 @@ class FTPToolModule(ToolModule):
     def _drain_srv_queue(self):
         while not self._srv_queue.empty():
             try:
-                text = self._srv_queue.get_nowait()
-                self._srv_log.setReadOnly(False)
-                self._srv_log.appendPlainText(text)
-                self._srv_log.setReadOnly(True)
+                item = self._srv_queue.get_nowait()
+                if isinstance(item, tuple):
+                    kind = item[0]
+                    if kind == "progress":
+                        _, key, text, done = item
+                        self._update_progress_line(self._srv_log, "_server_progress_lines", key, text, done)
+                    elif kind == "clear_progress":
+                        _, key = item
+                        state = getattr(self, "_server_progress_lines", None)
+                        if state is not None:
+                            state.pop(key, None)
+                    continue
+
+                text = item
+                self._append_log_line(self._srv_log, text)
                 if "[错误]" in text:
                     logger.error(f"[FTP服务器] {text}")
                 elif "[提示]" in text:
