@@ -16,6 +16,8 @@ NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当
 | 系统网络 | 路由、hosts、网卡 IP 管理等系统网络配置工具 |
 | 运行日志 | 汇总记录各模块运行、操作和错误日志 |
 
+![NetTool 软件界面](docs/nettool-screenshot.png)
+
 ## 版本命名
 
 项目使用 `VxxxRxxxCxxSPCxxx` 格式：
@@ -34,7 +36,6 @@ NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当
 - FTP 服务端启动时会检测并释放被占用的 21 端口，处理逻辑与 NTP 服务保持一致。
 - FTP 文件列表支持列宽自动适配窗口、手动拖动列宽，并限制列宽不会被拖到异常尺寸。
 - FTP 文件列表增加右键菜单，支持上传、下载、删除、重命名、刷新和返回上级目录等操作。
-- 发布包更新为 `V100R008C00SPC700`，包含 macOS DMG 和 Windows EXE。
 
 ## 开发运行
 
@@ -51,48 +52,6 @@ macOS 下也可以直接运行开发版：
 ./run_macos_dev.command
 ```
 
-## 打包
-
-最新发布文件请到 [GitHub Releases](https://github.com/HCIE-Datacom/network_toolbox/releases) 下载。
-
-项目已接入 GitHub Actions 自动打包。推送版本标签后会自动构建 macOS DMG 和 Windows EXE，并上传到对应的 GitHub Release：
-
-```bash
-git tag <版本号>
-git push origin main <版本号>
-```
-
-也可以在 GitHub 的 Actions 页面手动运行 `Build and Release NetTool` 工作流并填写版本号。
-
-自动发布产物：
-
-```text
-NetTool-V100R008C00SPC700.dmg
-NetTool-V100R008C00SPC700.exe
-```
-
-说明：安装包只发布到 GitHub Releases，不再作为源码文件提交到仓库。
-
-本地 macOS App 构建可执行：
-
-```bash
-python3 -m pip install -r requirements.txt pyinstaller
-NETTOOL_VERSION=V100R008C00SPC700 python3 -m PyInstaller --noconfirm --clean NetTool.spec
-```
-
-Windows 离线构建目录仍位于 `release/Windows/`，在 Windows x64 机器上执行：
-
-```bat
-setup.bat
-build.bat
-```
-
-`build.bat` 会生成：
-
-```text
-dist\NetTool-V100R008C00SPC700.exe
-```
-
 ## 目录结构
 
 ```text
@@ -101,6 +60,7 @@ core/                    # 主窗口、基础模块、图标、日志
 modules/                 # 各功能模块
 data/                    # 本地数据文件
 templates/               # 命令生成器模板
+docs/                    # 项目截图和文档资源
 release/                 # 发布产物和离线构建目录
 NetTool.spec             # macOS PyInstaller 打包配置
 ```
