@@ -54,13 +54,13 @@ release/macOS/NetTool-V100R008C00SPC600.dmg
 
 说明：DMG 是 macOS 安装包，打开后将 `NetTool.app` 拖入 `Applications`。
 
-Windows 构建输出：
+Windows 打包产物：
 
 ```text
-release/Windows/dist/NetTool-V100R008C00SPC600.exe
+release/Windows/NetTool-V100R008C00SPC600.exe
 ```
 
-说明：EXE 需要在 Windows x64 机器上执行 `release/Windows/build.bat` 后生成。
+说明：EXE 是 Windows 独立可执行文件，可直接运行。
 
 Windows 离线构建目录位于 `release/Windows/`，在 Windows x64 机器上执行：
 

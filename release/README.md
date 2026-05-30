@@ -18,13 +18,13 @@ macOS/NetTool-V100R008C00SPC600.dmg
 
 ## Windows
 
-构建输出：
+发布文件：
 
 ```text
-Windows/dist/NetTool-V100R008C00SPC600.exe
+Windows/NetTool-V100R008C00SPC600.exe
 ```
 
-说明：EXE 需要在 Windows x64 机器上执行 `build.bat` 后生成。
+说明：EXE 是 Windows 独立可执行文件，可直接运行。
 
 离线构建目录：
 

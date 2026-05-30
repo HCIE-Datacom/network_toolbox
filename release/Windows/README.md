@@ -2,13 +2,13 @@
 
 当前版本：`V100R008C00SPC600`。
 
-## 构建输出
+## 直接运行
 
 ```text
-dist\NetTool-V100R008C00SPC600.exe
+NetTool-V100R008C00SPC600.exe
 ```
 
-说明：该文件需要在 Windows x64 机器上执行 `build.bat` 后生成。
+说明：该文件是 Windows 独立可执行文件，可直接运行。
 
 ## 离线构建
 
