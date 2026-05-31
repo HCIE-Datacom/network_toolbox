@@ -18,6 +18,18 @@ NetTool 是一个跨平台网络工具箱，基于 Python + PySide6 开发，当
 
 ![NetTool 软件界面](docs/nettool-screenshot.png)
 
+## macOS 首次打开
+
+当前发布包未进行 Apple notarization 公证，macOS 首次打开时可能提示“Apple 无法验证 NetTool.app”。如果确认安装包来自本项目的 GitHub Releases，可以按下面方式打开：
+
+1. 将 `NetTool.app` 拖入“应用程序”目录。
+2. 在“应用程序”里右键或按住 `Control` 点击 `NetTool.app`，选择“打开”。
+3. 在确认弹窗中再次点击“打开”。这个操作只需要首次启动时执行一次。
+
+![macOS 右键打开 NetTool](docs/macos-open-right-click.png)
+
+![macOS 确认打开 NetTool](docs/macos-open-confirm.png)
+
 ## 版本命名
 
 项目使用 `VxxxRxxxCxxSPCxxx` 格式：
