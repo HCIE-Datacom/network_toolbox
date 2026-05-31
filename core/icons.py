@@ -1,6 +1,6 @@
 """
 NetTool - Network Toolbox
-Version: V100R008C00SPC700
+Version: V100R009C00SPC500
 Author: Tang Wenbo (HCIE-Datacom)
 Copyright (C) 2026 Tang Wenbo
 License: GNU General Public License v3.0 or later
@@ -113,6 +113,21 @@ def pixmap(name, size=24, fg="#0f172a", accent="#10a37f", bg="transparent", dpr=
         p.drawLine(QPointF(s * 0.44, s * 0.50), QPointF(s * 0.30, s * 0.61))
         p.setPen(pen(c, 1.9))
         p.drawLine(QPointF(s * 0.54, s * 0.62), QPointF(s * 0.72, s * 0.62))
+
+    elif name == "compare":
+        rounded(QRectF(s * 0.13, s * 0.18, s * 0.30, s * 0.62), s * 0.06, QColor(255, 255, 255, 36), c, 1.3)
+        rounded(QRectF(s * 0.57, s * 0.18, s * 0.30, s * 0.62), s * 0.06, QColor(255, 255, 255, 36), c, 1.3)
+        p.setPen(pen(c, 1.0))
+        for y in (0.34, 0.49, 0.64):
+            p.drawLine(QPointF(s * 0.20, s * y), QPointF(s * 0.36, s * y))
+            p.drawLine(QPointF(s * 0.64, s * y), QPointF(s * 0.80, s * y))
+        p.setPen(pen(a, 1.8))
+        p.drawLine(QPointF(s * 0.45, s * 0.39), QPointF(s * 0.55, s * 0.39))
+        p.drawLine(QPointF(s * 0.51, s * 0.33), QPointF(s * 0.57, s * 0.39))
+        p.drawLine(QPointF(s * 0.51, s * 0.45), QPointF(s * 0.57, s * 0.39))
+        p.drawLine(QPointF(s * 0.55, s * 0.61), QPointF(s * 0.45, s * 0.61))
+        p.drawLine(QPointF(s * 0.49, s * 0.55), QPointF(s * 0.43, s * 0.61))
+        p.drawLine(QPointF(s * 0.49, s * 0.67), QPointF(s * 0.43, s * 0.61))
 
     elif name == "iperf":
         p.setPen(pen(c, 1.5))

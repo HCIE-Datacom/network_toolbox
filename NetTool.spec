@@ -3,7 +3,7 @@ import os
 
 from PyInstaller.utils.hooks import collect_all
 
-APP_VERSION = os.environ.get('NETTOOL_VERSION', 'V100R008C00SPC700')
+APP_VERSION = os.environ.get('NETTOOL_VERSION', 'V100R009C00SPC500')
 
 datas = [('data', 'data'), ('templates', 'templates'), ('image_icon.png', '.')]
 binaries = []

@@ -1,6 +1,6 @@
 """
 NetTool - Network Toolbox
-Version: V100R008C00SPC700
+Version: V100R009C00SPC500
 Author: Tang Wenbo (HCIE-Datacom)
 Copyright (C) 2026 Tang Wenbo
 License: GNU General Public License v3.0 or later
@@ -30,6 +30,7 @@ from core.app import (
     set_card_style, set_transparent_bg,
     H1_STYLE, H2_STYLE, H3_STYLE, BODY_STYLE, HINT_STYLE, DESC_STYLE,
 )
+from core.admin_helper import run_windows_admin_command
 from core.logger import logger
 
 
@@ -51,13 +52,7 @@ def _run_admin(cmd_args, timeout=15, password=None):
     si = None
     kwargs = dict(capture_output=True, text=True, timeout=timeout)
     if _os() == "Windows":
-        si = subprocess.STARTUPINFO()
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = subprocess.SW_HIDE
-        kwargs["encoding"] = "gbk"
-        kwargs["errors"] = "replace"
-        kwargs["startupinfo"] = si
-        return subprocess.run(cmd_args, **kwargs)
+        return run_windows_admin_command(cmd_args, timeout=timeout)
     shell_args = cmd_args[1:] if cmd_args and cmd_args[0] == "sudo" else cmd_args
     shell_cmd = " ".join(shlex.quote(str(arg)) for arg in shell_args)
     apple_script_cmd = _escape_osa_string(shell_cmd)

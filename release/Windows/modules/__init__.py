@@ -1,6 +1,6 @@
 """
 NetTool - Network Toolbox
-Version: V100R008C00SPC700
+Version: V100R009C00SPC500
 Author: Tang Wenbo (HCIE-Datacom)
 Copyright (C) 2026 Tang Wenbo
 License: GNU General Public License v3.0 or later
@@ -13,6 +13,7 @@ from .ftp_tool import FTPToolModule
 from .ping_test import PingTestModule
 from .subnet_calc import SubnetCalcModule
 from .cmd_generator import CmdGeneratorModule
+from .config_compare import ConfigCompareModule
 from .iperf_tool import IperfToolModule
 from .mac_lookup import MACLookupModule
 from .route_tool import RouteToolModule
@@ -26,6 +27,7 @@ MODULE_REGISTRY = [
     PingTestModule,
     SubnetCalcModule,
     CmdGeneratorModule,
+    ConfigCompareModule,
     IperfToolModule,
     MACLookupModule,
     RouteToolModule,

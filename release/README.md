@@ -1,4 +1,4 @@
-# NetTool V100R008C00SPC700
+# NetTool V100R009C00SPC500
 
 ## 发布方式
 
@@ -18,7 +18,7 @@ git push origin main <版本号>
 发布文件：
 
 ```text
-NetTool-V100R008C00SPC700.dmg
+NetTool-V100R009C00SPC500.dmg
 ```
 
 安装方式：
@@ -32,7 +32,7 @@ NetTool-V100R008C00SPC700.dmg
 发布文件：
 
 ```text
-NetTool-V100R008C00SPC700.exe
+NetTool-V100R009C00SPC500.exe
 ```
 
 说明：EXE 是 Windows x64 安装/运行文件。
@@ -47,20 +47,19 @@ Windows/
 
 1. 拷贝 `Windows/` 目录到 Windows x64 机器。
 2. 双击 `setup.bat` 安装离线依赖。
-3. 双击 `build.bat` 生成 `dist\NetTool-V100R008C00SPC700.exe`。
+3. 双击 `build.bat` 生成 `dist\NetTool-V100R009C00SPC500.exe`。
 
 ## 版本信息
 
-- 版本号：`V100R008C00SPC700`
+- 版本号：`V100R009C00SPC500`
 
 ## 更新说明
 
-- 修复 FTP 客户端远程文件下载流程。
-- FTP 下载日志改为单行进度条更新，避免进度日志持续刷屏。
-- FTP 服务端补充客户端连接、登录、上传和下载日志。
-- FTP 服务端启动时自动处理 21 端口占用。
-- FTP 远程/本地文件列表支持列宽自动适配、手动拖动和拖动范围限制。
-- FTP 文件列表新增右键菜单和重命名操作。
+- 新增配置对比模块，支持普通文本配置文件左右逐行对比、差异高亮、空行补齐和文件拖入。
+- PING 测试支持 Ping、Tracert、TCPing 最多 5 个目标并行检测。
+- PING/Tracert/TCPing 输出增加时间戳、IPv4 输入校验、独立统计和结果保存。
+- PING 测试新增实时保存开关，运行时可按目标实时写入 txt 文件。
+- 系统网络模块优化管理员权限处理，Windows 下按需拉起提权 helper。
 
 ## 作者与协议
 

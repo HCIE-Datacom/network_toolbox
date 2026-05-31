@@ -1,11 +1,11 @@
 # NetTool Windows
 
-当前版本：`V100R008C00SPC700`。
+当前版本：`V100R009C00SPC500`。
 
 ## 构建输出
 
 ```text
-NetTool-V100R008C00SPC700.exe
+NetTool-V100R009C00SPC500.exe
 ```
 
 说明：该文件是 Windows x64 发布文件。如需重新构建，可在 Windows x64 机器上执行 `build.bat`。
@@ -16,11 +16,11 @@ NetTool-V100R008C00SPC700.exe
 
 1. 双击 `setup.bat` 安装依赖。
 2. 双击 `build.bat` 打包。
-3. 输出文件为 `dist\NetTool-V100R008C00SPC700.exe`。
+3. 输出文件为 `dist\NetTool-V100R009C00SPC500.exe`。
 
 ## 文件版本
 
-- 文件版本：`V100R008C00SPC700`
+- 文件版本：`V100R009C00SPC500`
 
 ## 作者与协议
 

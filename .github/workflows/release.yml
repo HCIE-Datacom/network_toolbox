@@ -2,14 +2,16 @@ name: Build and Release NetTool
 
 on:
   push:
+    branches:
+      - "V*R*C*SPC*"
     tags:
       - "V*R*C*SPC*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example V100R008C00SPC700"
+        description: "Release version, for example V100R009C00SPC500"
         required: true
-        default: "V100R008C00SPC700"
+        default: "V100R009C00SPC500"
 
 permissions:
   contents: write
@@ -181,6 +183,11 @@ jobs:
         run: |
           python -m compileall -q network_toolbox.py core modules
 
+      - name: Generate Windows version metadata
+        shell: pwsh
+        run: |
+          python release/Windows/generate_version_info.py release/Windows/version_info_build.txt
+
       - name: Build EXE
         shell: pwsh
         run: |
@@ -188,14 +195,14 @@ jobs:
             --name="NetTool-${env:NETTOOL_VERSION}" `
             --onefile `
             --windowed `
-            --uac-admin `
             --icon="release/Windows/netool.ico" `
-            --version-file="release/Windows/version_info.txt" `
+            --version-file="release/Windows/version_info_build.txt" `
             --add-data="data;data" `
             --add-data="templates;templates" `
             --add-data="image_icon.png;." `
             --collect-all modules `
             --hidden-import="queue" `
+            --hidden-import="core.admin_helper" `
             --hidden-import="pyftpdlib" `
             --hidden-import="paramiko" `
             --hidden-import="ping3" `
@@ -234,9 +241,12 @@ jobs:
           body: |
             ## 更新说明
 
-            - 自动构建并发布 macOS DMG。
-            - 自动构建并发布 Windows EXE。
-            - 安装包由 GitHub Actions 生成，源码仓库不再跟踪二进制发布包。
+            - 新增配置对比模块，支持普通文本配置左右逐行对比、差异高亮、空行补齐和文件拖入。
+            - PING 测试支持 Ping、Tracert、TCPing 最多 5 个目标并行检测，输出按目标分栏展示。
+            - PING/Tracert/TCPing 输出增加时间戳、IPv4 输入校验、独立统计和结果保存。
+            - PING 测试新增实时保存开关，运行时可按目标实时写入 txt 文件。
+            - 系统网络模块优化管理员权限处理，Windows 下按需拉起提权 helper。
+            - 安装包由 GitHub Actions 自动构建并发布 macOS DMG 和 Windows EXE。
           files: |
             artifacts/macos-dmg/NetTool-${{ needs.prepare.outputs.version }}.dmg
             artifacts/windows-exe/NetTool-${{ needs.prepare.outputs.version }}.exe
